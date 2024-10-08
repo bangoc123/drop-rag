@@ -14,7 +14,7 @@ st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c
 
 # Initialize session state for chroma client, collection, and model
 if "client" not in st.session_state:
-    st.session_state.client = chroma = chromadb.Client(tenant="default_tenant")
+    st.session_state.client = chromadb.Client(tenant="default_tenant")
 
 # Initialize session state for collection and model
 if "collection" not in st.session_state:

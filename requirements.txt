@@ -2,3 +2,4 @@ streamlit
 sentence_transformers
 chromadb
 google-generativeai
+ipython
