@@ -111,11 +111,7 @@ def get_search_result(query, collection, columns_to_answer):
     search_results = collection.query(query_embeddings=query_embeddings, n_results=2)  # Fetch top 10 results
     search_result = ""
 
-    print('****search_results****', search_results)
-
     metadatas =  search_results['metadatas']
-
-    print('type---', type(metadatas))
 
     i = 0
     for meta in metadatas[0]:
