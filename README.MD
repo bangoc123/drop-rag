@@ -1,4 +1,4 @@
-# RAG Pipeline Setup using Streamlit + Flask
+# Drag and drop RAG
 
 ## Overview
 
