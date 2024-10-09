@@ -7,9 +7,10 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
+from chunking import RecursiveTokenChunker
 
 # Initialize the page
-st.title("RAG Pipeline Setup")
+st.title("Drag and Drop RAG")
 st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c8309756/private-files/678dadd0-603b-11ef-b0a7-998b84b38d43-ProtonX_logo_horizontally__1_.png")
 
 # Initialize session state for chroma client, collection, and model
@@ -46,38 +47,115 @@ if uploaded_file is not None:
     # st.write("Detected Columns:", df.columns.tolist())
     st.dataframe(df)
 
+    doc_ids = [str(uuid.uuid4()) for _ in range(len(df))]
+
+    if "doc_ids" not in st.session_state:
+        st.session_state.doc_ids = doc_ids
+
+    # Add or replace the '_id' column in the DataFrame
+    df['doc_id'] = st.session_state.doc_ids
+
+    st.subheader("Chunking")
+
     # Step 2: Ask user for the index column (to generate embeddings)
     index_column = st.selectbox("Choose the column to index (for vector search):", df.columns)
+
+    chunkOption = st.radio(
+        "Please select one of the options below.",
+        ["No Chunking", "RecursiveTokenChunker"],
+        captions=[
+        "Keep the original document",
+        "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
+    ],
+    )
+
+    chunker = RecursiveTokenChunker(
+        chunk_size=200
+    )
+    chunk_records = []
+
+    # Iterate over rows in the original DataFrame
+    for index, row in df.iterrows():
+
+        # For "No Chunking" option, treat the selected index column as a single "chunk"
+        if chunkOption == "No Chunking":
+            # Use the selected index_column
+            selected_column_value = row[index_column]  # Dynamically use the selected column for chunking
+            if type(selected_column_value) == str and len(selected_column_value) > 0:
+                # Include all original columns in the chunk record
+                chunk_record = {**row.to_dict(), 'chunk': selected_column_value}
+                
+                # Rearrange the dictionary to ensure 'chunk' and '_id' come first
+                chunk_record = {
+                    'chunk': chunk_record['chunk'],
+                    # '_id': str(uuid.uuid4()),
+                    **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
+                }
+                chunk_records.append(chunk_record)
+
+        # For "RecursiveTokenChunker" option, split text from the selected index column into smaller chunks
+        elif chunkOption == "RecursiveTokenChunker":
+            selected_column_value = row[index_column]  # Dynamically use the selected column for chunking
+            if type(selected_column_value) == str and len(selected_column_value) > 0:
+                chunks = chunker.split_text(selected_column_value)
+                
+                # For each chunk, add a dictionary with the chunk and original_id to the list
+                for chunk in chunks:
+                    chunk_record = {**row.to_dict(), 'chunk': chunk}
+                    
+                    # Rearrange the dictionary to ensure 'chunk' and '_id' come first
+                    chunk_record = {
+                        'chunk': chunk_record['chunk'],
+                        # '_id': str(uuid.uuid4()),
+                        **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
+                    }
+                    chunk_records.append(chunk_record)
+
+    # Convert the list of dictionaries to a DataFrame
+    chunks_df = pd.DataFrame(chunk_records)
+
+    # Display the result
+    st.write("Number of chunks:", len(chunks_df))
+    st.dataframe(chunks_df)
+
 
     if st.button("Save Data"):
         try:
             # Encode column data to vectors
             st.session_state.model = SentenceTransformer('all-MiniLM-L6-v2')
-            embeddings = st.session_state.model.encode(df[index_column].tolist())
+            embeddings = st.session_state.model.encode(chunks_df['chunk'].tolist())
 
-            # Auto-generate IDs for each record
-            ids = [str(uuid.uuid4()) for _ in range(len(df))]
+            # Collect all metadata in one list (including the newly added '_id' column)
+            metadatas = [row.to_dict() for _, row in chunks_df.iterrows()]
 
-            # Insert records into the Chroma collection
-            for idx, row in df.iterrows():
-                st.session_state.collection.add(
-                    ids=[str(ids[idx])],  # unique id
-                    embeddings=[embeddings[idx]],  # vector representation
-                    metadatas=[row.to_dict()]  # metadata for each record
-                )
+            # Insert all records into the Chroma collection in a single call
+            chunk_ids = [str(uuid.uuid4()) for _ in range(len(chunks_df))]
+
+            st.session_state.collection.add(
+                ids=chunk_ids,               # unique ids
+                embeddings=embeddings, # vector representations
+                metadatas=metadatas    # metadata for each record
+            )
 
             st.success("Data saved to Chroma vector store successfully!")
             st.session_state.data_saved_success = True  # Mark data as saved successfully
 
+
         except Exception as e:
             st.error(f"Error saving data to Chroma: {str(e)}")
 
+
 # Show blue tick if data has been saved successfully
-header_text = "1) Setup data ✅" if st.session_state.data_saved_success else "1) Setup data"
+header_i = 1
+header_text = "{}. Setup data ✅".format(header_i) if st.session_state.data_saved_success else "{}. Setup data".format(header_i)
 st.header(header_text)
+
+
 
 if st.session_state.data_saved_success:
     st.markdown("✅ **Data Saved Successfully!**")
+
+
 
 # Step 3: Define which columns LLMs should answer from
 if uploaded_file:
@@ -87,7 +165,8 @@ if uploaded_file:
     )
 
 # Step 2: Setup LLMs (Gemini Only)
-header_text_llm = "2) Setup LLMs ✅" if 'gemini_model' in st.session_state else "2) Setup LLMs"
+header_i += 1
+header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
 st.header(header_text_llm)
 
 # Initialize a variable for tracking if the API key was entered successfully
@@ -108,7 +187,7 @@ if api_key_success:
 # Define a helper function for formatting retrieved data
 def get_search_result(query, collection, columns_to_answer):
     query_embeddings = st.session_state.model.encode([query])
-    search_results = collection.query(query_embeddings=query_embeddings, n_results=2)  # Fetch top 10 results
+    search_results = collection.query(query_embeddings=query_embeddings, n_results=10)  # Fetch top 10 results
     search_result = ""
 
     metadatas =  search_results['metadatas']
@@ -120,15 +199,14 @@ def get_search_result(query, collection, columns_to_answer):
         for column in columns_to_answer:
             if column in meta:
                 search_result += f" {column.capitalize()}: {meta.get(column)}"
-        
-        if 'price' in columns_to_answer and not meta.get('price'):
-            search_result += f", Price: Contact for more information"
-        search_result += "\n"
+                # search_result += "-------------------"
 
+        search_result += "\n"
     return search_result
 
 # Step 3: Interactive Chatbot
-st.header("3) Interactive Chatbot")
+header_i += 1
+st.header("{}. Interactive Chatbot".format(header_i))
 
 # Initialize chat history in session state
 if "chat_history" not in st.session_state:
