@@ -3,3 +3,4 @@ sentence_transformers
 chromadb
 google-generativeai
 ipython
+pdfplumber

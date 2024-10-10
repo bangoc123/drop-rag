@@ -8,6 +8,10 @@ import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
 from chunking import RecursiveTokenChunker
+from utils import process_batch, divide_dataframe, get_search_result
+import time
+import pdfplumber  # PDF extraction
+import io
 
 # Initialize the page
 st.title("Drag and Drop RAG")
@@ -28,10 +32,8 @@ if "model" not in st.session_state:
 if st.session_state.collection is None:
     st.session_state.collection = st.session_state.client.get_or_create_collection("rag_collection")
 
-
-
-# Step 1: File Upload (CSV or JSON) and Column Detection
-uploaded_file = st.file_uploader("Upload CSV or JSON file", type=["csv", "json"])
+# Step 1: File Upload (CSV, JSON, or PDF) and Column Detection
+uploaded_file = st.file_uploader("Upload CSV, JSON, or PDF file", type=["csv", "json", "pdf"])
 
 # Initialize a variable for tracking the success of saving the data
 st.session_state.data_saved_success = False
@@ -43,8 +45,16 @@ if uploaded_file is not None:
     elif uploaded_file.name.endswith(".json"):
         json_data = json.load(uploaded_file)
         df = pd.json_normalize(json_data)  # Normalize JSON to a flat DataFrame format
+    elif uploaded_file.name.endswith(".pdf"):
+        # Extract text from PDF
+        pdf_text = []
+        with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
+            for page in pdf.pages:
+                pdf_text.append(page.extract_text())
+
+        # Convert PDF text into a DataFrame (assuming one column for simplicity)
+        df = pd.DataFrame({"content": pdf_text})
     
-    # st.write("Detected Columns:", df.columns.tolist())
     st.dataframe(df)
 
     doc_ids = [str(uuid.uuid4()) for _ in range(len(df))]
@@ -119,30 +129,52 @@ if uploaded_file is not None:
     st.dataframe(chunks_df)
 
 
-    if st.button("Save Data"):
-        try:
-            # Encode column data to vectors
-            st.session_state.model = SentenceTransformer('all-MiniLM-L6-v2')
-            embeddings = st.session_state.model.encode(chunks_df['chunk'].tolist())
 
-            # Collect all metadata in one list (including the newly added '_id' column)
-            metadatas = [row.to_dict() for _, row in chunks_df.iterrows()]
+# Button to save data
+# Button to save data
+if st.button("Save Data"):
+    try:
+        # Initialize the model and collection
+        st.session_state.model = SentenceTransformer('all-MiniLM-L6-v2')
+        collection = st.session_state.collection
 
-            # Insert all records into the Chroma collection in a single call
-            chunk_ids = [str(uuid.uuid4()) for _ in range(len(chunks_df))]
+        # Define the batch size
+        batch_size = 256
 
-            st.session_state.collection.add(
-                ids=chunk_ids,               # unique ids
-                embeddings=embeddings, # vector representations
-                metadatas=metadatas    # metadata for each record
-            )
+        # Split the DataFrame into smaller batches
+        df_batches = divide_dataframe(chunks_df, batch_size)
+
+        # Check if the dataframe has data, otherwise show a warning and skip the processing
+        if not df_batches:
+            st.warning("No data available to process.")
+        else:
+            num_batches = len(df_batches)
+
+            # Initialize progress bar
+            progress_text = "Saving data to Chroma. Please wait..."
+            my_bar = st.progress(0, text=progress_text)
+
+            # Process each batch
+            for i, batch_df in enumerate(df_batches):
+                if batch_df.empty:
+                    continue  # Skip empty batches (just in case)
+
+                process_batch(batch_df, st.session_state.model, collection)
+
+                # Update progress dynamically for each batch
+                progress_percentage = int(((i + 1) / num_batches) * 100)
+                my_bar.progress(progress_percentage, text=f"Processing batch {i + 1}/{num_batches}")
+
+                time.sleep(0.1)  # Optional sleep to simulate processing time
+
+            # Empty the progress bar once completed
+            my_bar.empty()
 
             st.success("Data saved to Chroma vector store successfully!")
-            st.session_state.data_saved_success = True  # Mark data as saved successfully
+            st.session_state.data_saved_success = True
 
-
-        except Exception as e:
-            st.error(f"Error saving data to Chroma: {str(e)}")
+    except Exception as e:
+        st.error(f"Error saving data to Chroma: {str(e)}")
 
 
 # Show blue tick if data has been saved successfully
@@ -184,25 +216,6 @@ if gemini_api_key:
 if api_key_success:
     st.markdown("✅ **API Key Saved Successfully!**")
 
-# Define a helper function for formatting retrieved data
-def get_search_result(query, collection, columns_to_answer):
-    query_embeddings = st.session_state.model.encode([query])
-    search_results = collection.query(query_embeddings=query_embeddings, n_results=10)  # Fetch top 10 results
-    search_result = ""
-
-    metadatas =  search_results['metadatas']
-
-    i = 0
-    for meta in metadatas[0]:
-        i += 1
-        search_result += f"\n{i})"
-        for column in columns_to_answer:
-            if column in meta:
-                search_result += f" {column.capitalize()}: {meta.get(column)}"
-                # search_result += "-------------------"
-
-        search_result += "\n"
-    return search_result
 
 # Step 3: Interactive Chatbot
 header_i += 1
@@ -236,7 +249,9 @@ if prompt := st.chat_input("What is up?"):
 
             # Step 2: Combine retrieved data to enhance the prompt based on selected columns
             if columns_to_answer:
-                enhanced_prompt = prompt + "\n\nRetrieved Data:\n" + get_search_result(prompt, st.session_state.collection, columns_to_answer)
+                retrieved_data = get_search_result(st.session_state.model, prompt, st.session_state.collection, columns_to_answer)
+                
+                enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
                 # Step 3: Feed enhanced prompt to Gemini LLM for completion
                 response = st.session_state.gemini_model.generate_content(enhanced_prompt)
