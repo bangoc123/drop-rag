@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
-from chunking import RecursiveTokenChunker
+from chunking import RecursiveTokenChunker, LLMAgenticChunker
 from utils import process_batch, divide_dataframe, get_search_result
 import time
 import pdfplumber  # PDF extraction
@@ -66,21 +66,35 @@ if uploaded_file is not None:
     df['doc_id'] = st.session_state.doc_ids
 
     st.subheader("Chunking")
+    # Step 2: Input Gemini API key (only needed for AgenticChunker)
+    gemini_api_key = st.text_input("Enter your Gemini API Key (required for AgenticChunker):", type="password")
+    if gemini_api_key:
+        genai.configure(api_key=gemini_api_key)
+        st.success("Gemini API Key saved successfully!")
+        st.session_state.gemini_api_key = gemini_api_key
+    else:
+        st.warning("Please enter the API key for AgenticChunker.")
 
     # Step 2: Ask user for the index column (to generate embeddings)
     index_column = st.selectbox("Choose the column to index (for vector search):", df.columns)
 
+    # Disable the "AgenticChunker" option if the API key is not provided
+    chunk_options = ["No Chunking", "RecursiveTokenChunker", "SemanticChunker"]
+    if "gemini_api_key" in st.session_state and st.session_state.gemini_api_key:
+        chunk_options.append("AgenticChunker")
+    else:
+        st.warning("AgenticChunker will only be available after entering the Gemini API key.")
+    
+    # Step 4: Chunking options
     chunkOption = st.radio(
         "Please select one of the options below.",
-        ["No Chunking", "RecursiveTokenChunker"],
+        chunk_options,
         captions=[
-        "Keep the original document",
-        "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
-    ],
-    )
-
-    chunker = RecursiveTokenChunker(
-        chunk_size=200
+            "Keep the original document",
+            "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
+            "Chunking with semantic comparison between chunks",
+            "Let LLM decide chunking (requires Gemini API)"
+        ]
     )
     chunk_records = []
 
@@ -88,38 +102,38 @@ if uploaded_file is not None:
     for index, row in df.iterrows():
 
         # For "No Chunking" option, treat the selected index column as a single "chunk"
+        chunker = None
+        selected_column_value = row[index_column]
+        chunks = []
+        if not(type(selected_column_value) == str and len(selected_column_value) > 0):
+            continue
         if chunkOption == "No Chunking":
             # Use the selected index_column
-            selected_column_value = row[index_column]  # Dynamically use the selected column for chunking
-            if type(selected_column_value) == str and len(selected_column_value) > 0:
-                # Include all original columns in the chunk record
-                chunk_record = {**row.to_dict(), 'chunk': selected_column_value}
-                
-                # Rearrange the dictionary to ensure 'chunk' and '_id' come first
-                chunk_record = {
-                    'chunk': chunk_record['chunk'],
-                    # '_id': str(uuid.uuid4()),
-                    **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
-                }
-                chunk_records.append(chunk_record)
-
+            chunks = [selected_column_value]
+            
         # For "RecursiveTokenChunker" option, split text from the selected index column into smaller chunks
         elif chunkOption == "RecursiveTokenChunker":
-            selected_column_value = row[index_column]  # Dynamically use the selected column for chunking
-            if type(selected_column_value) == str and len(selected_column_value) > 0:
-                chunks = chunker.split_text(selected_column_value)
-                
-                # For each chunk, add a dictionary with the chunk and original_id to the list
-                for chunk in chunks:
-                    chunk_record = {**row.to_dict(), 'chunk': chunk}
-                    
-                    # Rearrange the dictionary to ensure 'chunk' and '_id' come first
-                    chunk_record = {
-                        'chunk': chunk_record['chunk'],
-                        # '_id': str(uuid.uuid4()),
-                        **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
-                    }
-                    chunk_records.append(chunk_record)
+            chunker = RecursiveTokenChunker(
+                chunk_size=200
+            )
+            chunks = chunker.split_text(selected_column_value)
+            
+        elif chunkOption == "SemanticChunker":
+            pass
+        elif chunkOption == "AgenticChunker":
+            chunker = LLMAgenticChunker(organisation="google", model_name="gemini-1.5-pro", api_key=gemini_api_key)
+            chunks = chunker.split_text(selected_column_value)
+        # For each chunk, add a dictionary with the chunk and original_id to the list
+        for chunk in chunks:
+            chunk_record = {**row.to_dict(), 'chunk': chunk}
+            
+            # Rearrange the dictionary to ensure 'chunk' and '_id' come first
+            chunk_record = {
+                'chunk': chunk_record['chunk'],
+                # '_id': str(uuid.uuid4()),
+                **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
+            }
+            chunk_records.append(chunk_record)
 
     # Convert the list of dictionaries to a DataFrame
     chunks_df = pd.DataFrame(chunk_records)

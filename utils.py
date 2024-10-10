@@ -1,5 +1,6 @@
 import math
 import uuid
+import tiktoken
 
 def process_batch(batch_df, model, collection):
     """Encode and save the batch data to Chroma in batches where batch size is specified."""
@@ -49,3 +50,11 @@ def get_search_result(model, query, collection, columns_to_answer):
 
         search_result += "\n"
     return search_result
+
+
+# Count the number of tokens in each page_content
+def openai_token_count(string: str) -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.get_encoding("cl100k_base")
+    num_tokens = len(encoding.encode(string, disallowed_special=()))
+    return num_tokens
