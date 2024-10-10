@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
-from chunking import RecursiveTokenChunker, LLMAgenticChunker
+from chunking import RecursiveTokenChunker, LLMAgenticChunker, ProtonxSemanticChunker
 from utils import process_batch, divide_dataframe, get_search_result
 import time
 import pdfplumber  # PDF extraction
@@ -96,6 +96,12 @@ if uploaded_file is not None:
             "Let LLM decide chunking (requires Gemini API)"
         ]
     )
+    
+    if chunkOption == "SemanticChunker":
+        embedding_option = st.selectbox(
+            "Choose the embedding method for Semantic Chunker:",
+            ["TF-IDF", "Sentence-Transformers"]
+        )
     chunk_records = []
 
     # Iterate over rows in the original DataFrame
@@ -119,7 +125,11 @@ if uploaded_file is not None:
             chunks = chunker.split_text(selected_column_value)
             
         elif chunkOption == "SemanticChunker":
-            pass
+            if embedding_option == "TF-IDF":
+                chunker = ProtonxSemanticChunker(embedding_type="tfidf")
+            else:
+                chunker = ProtonxSemanticChunker(embedding_type="transformers", model="all-MiniLM-L6-v2")
+            chunks = chunker.split_text(selected_column_value)
         elif chunkOption == "AgenticChunker":
             chunker = LLMAgenticChunker(organisation="google", model_name="gemini-1.5-pro", api_key=gemini_api_key)
             chunks = chunker.split_text(selected_column_value)

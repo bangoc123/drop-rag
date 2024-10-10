@@ -6,3 +6,4 @@ ipython
 pdfplumber
 openai
 tiktoken
+nltk
