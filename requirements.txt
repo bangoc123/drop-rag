@@ -5,3 +5,6 @@ google-generativeai
 ipython
 pdfplumber
 python-docx
+openai
+tiktoken
+nltk
