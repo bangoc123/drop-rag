@@ -33,8 +33,8 @@ def divide_dataframe(df, batch_size):
 
 # Define a helper function for formatting retrieved data
 def get_search_result(model, query, collection, columns_to_answer):
-    query_embeddings = model([query])
-    search_results = collection.query(query_embeddings=query_embeddings, n_results=10)  # Fetch top 10 results
+    query_embeddings = model.encode([query])
+    search_results = collection.query(query_embeddings=query_embeddings, n_results=20)  # Fetch top 10 results
     search_result = ""
 
     metadatas =  search_results['metadatas']

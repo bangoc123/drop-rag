@@ -12,6 +12,7 @@ from utils import process_batch, divide_dataframe, get_search_result
 import time
 import pdfplumber  # PDF extraction
 import io
+from docx import Document  # DOCX extraction
 
 # Initialize the page
 st.title("Drag and Drop RAG")
@@ -32,8 +33,8 @@ if "model" not in st.session_state:
 if st.session_state.collection is None:
     st.session_state.collection = st.session_state.client.get_or_create_collection("rag_collection")
 
-# Step 1: File Upload (CSV, JSON, or PDF) and Column Detection
-uploaded_file = st.file_uploader("Upload CSV, JSON, or PDF file", type=["csv", "json", "pdf"])
+# Step 1: File Upload (CSV, JSON, PDF, or DOCX) and Column Detection
+uploaded_file = st.file_uploader("Upload CSV, JSON, PDF, or DOCX file", type=["csv", "json", "pdf", "docx"])
 
 # Initialize a variable for tracking the success of saving the data
 st.session_state.data_saved_success = False
@@ -54,7 +55,14 @@ if uploaded_file is not None:
 
         # Convert PDF text into a DataFrame (assuming one column for simplicity)
         df = pd.DataFrame({"content": pdf_text})
-    
+    elif uploaded_file.name.endswith(".docx"):
+        # Extract text from DOCX
+        doc = Document(io.BytesIO(uploaded_file.read()))
+        docx_text = [para.text for para in doc.paragraphs if para.text]
+
+        # Convert DOCX text into a DataFrame (assuming one column for simplicity)
+        df = pd.DataFrame({"content": docx_text})
+
     st.dataframe(df)
 
     doc_ids = [str(uuid.uuid4()) for _ in range(len(df))]
@@ -244,10 +252,7 @@ if prompt := st.chat_input("What is up?"):
 
     with st.chat_message("assistant"):
         if st.session_state.collection is not None:
-            # Step 1: Retrieve relevant data using query and vector search
-            query_embeddings = st.session_state.model.encode([prompt])
-
-            # Step 2: Combine retrieved data to enhance the prompt based on selected columns
+            # Combine retrieved data to enhance the prompt based on selected columns
             if columns_to_answer:
                 retrieved_data = get_search_result(st.session_state.model, prompt, st.session_state.collection, columns_to_answer)
                 
