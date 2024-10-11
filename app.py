@@ -18,6 +18,41 @@ from docx import Document  # DOCX extraction
 st.title("Drag and Drop RAG")
 st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c8309756/private-files/678dadd0-603b-11ef-b0a7-998b84b38d43-ProtonX_logo_horizontally__1_.png")
 
+
+# Initialize session state for language choice and model embedding
+if "language" not in st.session_state:
+    st.session_state.language = "en"  # Default language is English
+if "embedding_model" not in st.session_state:
+    st.session_state.embedding_model = None  # Placeholder for the embedding model
+
+# Language selection popup
+st.sidebar.subheader("Choose Language")
+language_choice = st.sidebar.radio("Select language:", ["English", "Vietnamese"])
+
+# Switch embedding model based on language choice
+if language_choice == "English":
+    st.session_state.language = "en"
+    st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
+elif language_choice == "Vietnamese":
+    st.session_state.language = "vi"
+    st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
+    st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
+
+
+# Sidebar settings
+st.sidebar.header("Settings")
+
+# Chunk size input
+st.session_state.chunk_size = st.sidebar.number_input(
+    "Chunk Size", min_value=50, max_value=1000, value=200, step=50, help="Set the size of each chunk in terms of tokens."
+)
+
+st.session_state.number_docs_retrieval = st.sidebar.number_input(
+    "Number of documnents retrieval", min_value=1, max_value=50, value=10, step=1, help="Set the number of document which will be retrieved."
+)
+
+
 # Initialize session state for chroma client, collection, and model
 if "client" not in st.session_state:
     st.session_state.client = chromadb.PersistentClient("db")
@@ -26,12 +61,14 @@ if "client" not in st.session_state:
 if "collection" not in st.session_state:
     st.session_state.collection = None
 
-if "model" not in st.session_state:
-    st.session_state.model = None
 
 # Check if the collection exists, if not, create a new one
 if st.session_state.collection is None:
-    st.session_state.collection = st.session_state.client.get_or_create_collection("rag_collection")
+    random_collection_name = f"rag_collection_{uuid.uuid4().hex[:8]}"
+    st.session_state.collection = st.session_state.client.get_or_create_collection(
+        name=random_collection_name,
+        metadata={"description": "A collection for RAG system"},
+    )
 
 # Step 1: File Upload (CSV, JSON, PDF, or DOCX) and Column Detection
 uploaded_file = st.file_uploader("Upload CSV, JSON, PDF, or DOCX file", type=["csv", "json", "pdf", "docx"])
@@ -55,7 +92,7 @@ if uploaded_file is not None:
 
         # Convert PDF text into a DataFrame (assuming one column for simplicity)
         df = pd.DataFrame({"content": pdf_text})
-    elif uploaded_file.name.endswith(".docx"):
+    elif uploaded_file.name.endswith(".docx") or uploaded_file.name.endswith(".doc"):
         # Extract text from DOCX
         doc = Document(io.BytesIO(uploaded_file.read()))
         docx_text = [para.text for para in doc.paragraphs if para.text]
@@ -88,7 +125,7 @@ if uploaded_file is not None:
     )
 
     chunker = RecursiveTokenChunker(
-        chunk_size=200
+        chunk_size=st.session_state.chunk_size
     )
     chunk_records = []
 
@@ -142,8 +179,6 @@ if uploaded_file is not None:
 # Button to save data
 if st.button("Save Data"):
     try:
-        # Initialize the model and collection
-        st.session_state.model = SentenceTransformer('all-MiniLM-L6-v2')
         collection = st.session_state.collection
 
         # Define the batch size
@@ -167,7 +202,7 @@ if st.button("Save Data"):
                 if batch_df.empty:
                     continue  # Skip empty batches (just in case)
 
-                process_batch(batch_df, st.session_state.model, collection)
+                process_batch(batch_df, st.session_state.embedding_model, collection)
 
                 # Update progress dynamically for each batch
                 progress_percentage = int(((i + 1) / num_batches) * 100)
@@ -254,7 +289,26 @@ if prompt := st.chat_input("What is up?"):
         if st.session_state.collection is not None:
             # Combine retrieved data to enhance the prompt based on selected columns
             if columns_to_answer:
-                retrieved_data = get_search_result(st.session_state.model, prompt, st.session_state.collection, columns_to_answer)
+                metadatas, retrieved_data = get_search_result(
+                    st.session_state.embedding_model, 
+                    prompt, 
+                    st.session_state.collection, 
+                    columns_to_answer,
+                    st.session_state.number_docs_retrieval
+                )
+
+               # Flatten the list of lists (metadatas) and convert to a DataFrame
+                if metadatas:
+                    flattened_metadatas = [item for sublist in metadatas for item in sublist]  # Flatten the list of lists
+                    
+                    # Convert the flattened list of dictionaries to a DataFrame
+                    metadata_df = pd.DataFrame(flattened_metadatas)
+                    
+                    # Display the DataFrame in the sidebar
+                    st.sidebar.subheader("Retrieval data")
+                    st.sidebar.dataframe(metadata_df)
+                else:
+                    st.sidebar.write("No metadata to display.")
                 
                 enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 

@@ -32,9 +32,11 @@ def divide_dataframe(df, batch_size):
 
 
 # Define a helper function for formatting retrieved data
-def get_search_result(model, query, collection, columns_to_answer):
+def get_search_result(model, query, collection, columns_to_answer, number_docs_retrieval ):
     query_embeddings = model.encode([query])
-    search_results = collection.query(query_embeddings=query_embeddings, n_results=20)  # Fetch top 10 results
+    search_results = collection.query(
+        query_embeddings=query_embeddings, 
+        n_results=number_docs_retrieval)  # Fetch top 10 results
     search_result = ""
 
     metadatas =  search_results['metadatas']
@@ -48,4 +50,4 @@ def get_search_result(model, query, collection, columns_to_answer):
                 search_result += f" {column.capitalize()}: {meta.get(column)}"
 
         search_result += "\n"
-    return search_result
+    return metadatas, search_result
