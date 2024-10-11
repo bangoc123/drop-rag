@@ -1,7 +1,3 @@
-Here is the updated README with the correct `git clone` link:
-
----
-
 # Drag and Drop RAG
 
 ## Overview
