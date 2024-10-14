@@ -14,6 +14,11 @@ import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 
+def clear_session_state():
+    for key in st.session_state.keys():
+        del st.session_state[key]
+
+
 # Initialize the page
 st.title("Drag and Drop RAG")
 st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c8309756/private-files/678dadd0-603b-11ef-b0a7-998b84b38d43-ProtonX_logo_horizontally__1_.png")
@@ -111,25 +116,19 @@ if uploaded_file is not None:
     df['doc_id'] = st.session_state.doc_ids
 
     st.subheader("Chunking")
-    # Step 2: Input Gemini API key (only needed for AgenticChunker)
-    gemini_api_key = st.text_input("Enter your Gemini API Key (required for AgenticChunker):", type="password")
-    if gemini_api_key:
-        genai.configure(api_key=gemini_api_key)
-        st.success("Gemini API Key saved successfully!")
-        st.session_state.gemini_api_key = gemini_api_key
-    else:
-        st.warning("Please enter the API key for AgenticChunker.")
+
 
     # Step 2: Ask user for the index column (to generate embeddings)
     index_column = st.selectbox("Choose the column to index (for vector search):", df.columns)
 
     # Disable the "AgenticChunker" option if the API key is not provided
-    chunk_options = ["No Chunking", "RecursiveTokenChunker", "SemanticChunker"]
-    if "gemini_api_key" in st.session_state and st.session_state.gemini_api_key:
-        chunk_options.append("AgenticChunker")
-    else:
-        st.warning("AgenticChunker will only be available after entering the Gemini API key.")
-    
+    chunk_options = [
+        "No Chunking",
+        "RecursiveTokenChunker", 
+        "SemanticChunker",
+        # "AgenticChunker",
+    ]
+
     # Step 4: Chunking options
     chunkOption = st.radio(
         "Please select one of the options below.",
@@ -138,7 +137,7 @@ if uploaded_file is not None:
             "Keep the original document",
             "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
             "Chunking with semantic comparison between chunks",
-            "Let LLM decide chunking (requires Gemini API)"
+            # "Let LLM decide chunking (requires Gemini API)"
         ]
     )
     
@@ -171,13 +170,28 @@ if uploaded_file is not None:
             
         elif chunkOption == "SemanticChunker":
             if embedding_option == "TF-IDF":
-                chunker = ProtonxSemanticChunker(embedding_type="tfidf")
+                chunker = ProtonxSemanticChunker(
+                    embedding_type="tfidf",
+                )
             else:
-                chunker = ProtonxSemanticChunker(embedding_type="transformers", model="all-MiniLM-L6-v2")
+                chunker = ProtonxSemanticChunker(
+                    embedding_type="transformers", 
+                    model="all-MiniLM-L6-v2",
+                )
             chunks = chunker.split_text(selected_column_value)
-        elif chunkOption == "AgenticChunker":
-            chunker = LLMAgenticChunker(organisation="google", model_name="gemini-1.5-pro", api_key=gemini_api_key)
-            chunks = chunker.split_text(selected_column_value)
+        # elif chunkOption == "AgenticChunker":
+        #     if not st.session_state.gemini_api_key:
+        #         st.session_state.gemini_api_key = st.text_input(
+        #             "Enter your Gemini API Key:", 
+        #             type="password",
+        #             key="api_key_1")
+        #     else:
+        #         chunker = LLMAgenticChunker(
+        #             organisation="google", 
+        #             model_name="gemini-1.5-pro", 
+        #             api_key=st.session_state.gemini_api_key
+        #         )
+        #         chunks = chunker.split_text(selected_column_value)
         # For each chunk, add a dictionary with the chunk and original_id to the list
         for chunk in chunks:
             chunk_record = {**row.to_dict(), 'chunk': chunk}
@@ -263,25 +277,32 @@ if uploaded_file:
         df.columns
     )
 
-# Step 2: Setup LLMs (Gemini Only)
-header_i += 1
-header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
-st.header(header_text_llm)
 
-# Initialize a variable for tracking if the API key was entered successfully
-api_key_success = False
 
-# Input Gemini API key
-gemini_api_key = st.text_input("Enter your Gemini API Key:", type="password")
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
-    st.success("Gemini API Key saved successfully!")
-    st.session_state.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
-    api_key_success = True
+if "gemini_api_key" not in st.session_state:
 
-# Show blue tick if API key was entered successfully
-if api_key_success:
-    st.markdown("✅ **API Key Saved Successfully!**")
+    # Step 2: Setup LLMs (Gemini Only)
+    header_i += 1
+    header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
+    st.header(header_text_llm)
+
+    # Initialize a variable for tracking if the API key was entered successfully
+    api_key_success = False
+
+    # Input Gemini API key
+    st.session_state.gemini_api_key = st.text_input(
+        "Enter your Gemini API Key:", 
+        type="password", 
+        key="api_key_2")   
+    if st.session_state.gemini_api_key:
+        genai.configure(api_key=st.session_state.gemini_api_key)
+        st.success("Gemini API Key saved successfully!")
+        st.session_state.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+        api_key_success = True
+
+    # Show blue tick if API key was entered successfully
+    if api_key_success:
+        st.markdown("✅ **API Key Saved Successfully!**")
 
 
 # Step 3: Interactive Chatbot

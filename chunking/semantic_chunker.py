@@ -5,15 +5,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer
 
 
-nltk.download("punkt")
-
-
-
 class ProtonxSemanticChunker(BaseChunker):
     def __init__(self, threshold=0.3, embedding_type="tfidf", model="all-MiniLM-L6-v2"):
         self.threshold = threshold
         self.embedding_type = embedding_type
         self.model = model
+
+        # Download punkt for sentence tokenization, ensuring it's only done when class is initialized
+        nltk.download("punkt", quiet=True)
     
     def embed_function(self, sentences):
         """
