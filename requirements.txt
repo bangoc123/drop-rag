@@ -8,3 +8,4 @@ python-docx
 openai
 tiktoken
 nltk
+ollama==0.3.3
