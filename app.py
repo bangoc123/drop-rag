@@ -57,6 +57,9 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
     "Number of documnents retrieval", min_value=1, max_value=50, value=10, step=1, help="Set the number of document which will be retrieved."
 )
 
+# Setup Gemini API key
+if "gemini_api_key" not in st.session_state:
+    st.session_state.gemini_api_key = None
 
 # Initialize session state for chroma client, collection, and model
 if "client" not in st.session_state:
@@ -75,141 +78,164 @@ if st.session_state.collection is None:
         metadata={"description": "A collection for RAG system"},
     )
 
+
 # Step 1: File Upload (CSV, JSON, PDF, or DOCX) and Column Detection
-uploaded_file = st.file_uploader("Upload CSV, JSON, PDF, or DOCX file", type=["csv", "json", "pdf", "docx"])
+uploaded_files = st.file_uploader(
+    "Upload CSV, JSON, PDF, or DOCX files", 
+    type=["csv", "json", "pdf", "docx"], 
+    accept_multiple_files=True
+)
 
 # Initialize a variable for tracking the success of saving the data
 st.session_state.data_saved_success = False
 
-if uploaded_file is not None:
-    # Determine file type and read accordingly
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    elif uploaded_file.name.endswith(".json"):
-        json_data = json.load(uploaded_file)
-        df = pd.json_normalize(json_data)  # Normalize JSON to a flat DataFrame format
-    elif uploaded_file.name.endswith(".pdf"):
-        # Extract text from PDF
-        pdf_text = []
-        with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
-            for page in pdf.pages:
-                pdf_text.append(page.extract_text())
-
-        # Convert PDF text into a DataFrame (assuming one column for simplicity)
-        df = pd.DataFrame({"content": pdf_text})
-    elif uploaded_file.name.endswith(".docx") or uploaded_file.name.endswith(".doc"):
-        # Extract text from DOCX
-        doc = Document(io.BytesIO(uploaded_file.read()))
-        docx_text = [para.text for para in doc.paragraphs if para.text]
-
-        # Convert DOCX text into a DataFrame (assuming one column for simplicity)
-        df = pd.DataFrame({"content": docx_text})
-
-    st.dataframe(df)
-
-    doc_ids = [str(uuid.uuid4()) for _ in range(len(df))]
-
-    if "doc_ids" not in st.session_state:
-        st.session_state.doc_ids = doc_ids
-
-    # Add or replace the '_id' column in the DataFrame
-    df['doc_id'] = st.session_state.doc_ids
-
-    st.subheader("Chunking")
-
-
-    # Step 2: Ask user for the index column (to generate embeddings)
-    index_column = st.selectbox("Choose the column to index (for vector search):", df.columns)
-
-    # Disable the "AgenticChunker" option if the API key is not provided
-    chunk_options = [
-        "No Chunking",
-        "RecursiveTokenChunker", 
-        "SemanticChunker",
-        # "AgenticChunker",
-    ]
-
-    # Step 4: Chunking options
-    chunkOption = st.radio(
-        "Please select one of the options below.",
-        chunk_options,
-        captions=[
-            "Keep the original document",
-            "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
-            "Chunking with semantic comparison between chunks",
-            # "Let LLM decide chunking (requires Gemini API)"
-        ]
-    )
+# Ensure `df` is only accessed if it's been created and has columns
+if uploaded_files is not None:
+    all_data = []
     
-    if chunkOption == "SemanticChunker":
-        embedding_option = st.selectbox(
-            "Choose the embedding method for Semantic Chunker:",
-            ["TF-IDF", "Sentence-Transformers"]
+    for uploaded_file in uploaded_files:
+        # Determine file type and read accordingly
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+            all_data.append(df)
+
+        elif uploaded_file.name.endswith(".json"):
+            json_data = json.load(uploaded_file)
+            df = pd.json_normalize(json_data)  # Normalize JSON to a flat DataFrame format
+            all_data.append(df)
+
+        elif uploaded_file.name.endswith(".pdf"):
+            # Extract text from PDF
+            pdf_text = []
+            with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
+                for page in pdf.pages:
+                    pdf_text.append(page.extract_text())
+
+            # Convert PDF text into a DataFrame (assuming one column for simplicity)
+            df = pd.DataFrame({"content": pdf_text})
+            all_data.append(df)
+
+        elif uploaded_file.name.endswith(".docx") or uploaded_file.name.endswith(".doc"):
+            # Extract text from DOCX
+            doc = Document(io.BytesIO(uploaded_file.read()))
+            docx_text = [para.text for para in doc.paragraphs if para.text]
+
+            # Convert DOCX text into a DataFrame (assuming one column for simplicity)
+            df = pd.DataFrame({"content": docx_text})
+            all_data.append(df)
+
+    # Concatenate all data into a single DataFrame
+    if all_data:
+        df = pd.concat(all_data, ignore_index=True)
+        st.dataframe(df)
+
+        doc_ids = [str(uuid.uuid4()) for _ in range(len(df))]
+
+        if "doc_ids" not in st.session_state:
+            st.session_state.doc_ids = doc_ids
+
+        # Add or replace the '_id' column in the DataFrame
+        df['doc_id'] = st.session_state.doc_ids
+
+        st.subheader("Chunking")
+
+        # **Ensure `df` is not empty before calling selectbox**
+        if not df.empty:
+            # Display selectbox to choose the column for vector search
+            index_column = st.selectbox("Choose the column to index (for vector search):", df.columns)
+            st.write(f"Selected column for indexing: {index_column}")
+        else:
+            st.warning("The DataFrame is empty, please upload valid data.")
+
+        # Disable the "AgenticChunker" option if the API key is not provided
+        chunk_options = [
+            "No Chunking",
+            "RecursiveTokenChunker", 
+            "SemanticChunker",
+            # "AgenticChunker",
+        ]
+
+        # Step 4: Chunking options
+        chunkOption = st.radio(
+            "Please select one of the options below.",
+            chunk_options,
+            captions=[
+                "Keep the original document",
+                "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
+                "Chunking with semantic comparison between chunks",
+                # "Let LLM decide chunking (requires Gemini API)"
+            ]
         )
-    chunk_records = []
-
-    # Iterate over rows in the original DataFrame
-    for index, row in df.iterrows():
-
-        # For "No Chunking" option, treat the selected index column as a single "chunk"
-        chunker = None
-        selected_column_value = row[index_column]
-        chunks = []
-        if not(type(selected_column_value) == str and len(selected_column_value) > 0):
-            continue
-        if chunkOption == "No Chunking":
-            # Use the selected index_column
-            chunks = [selected_column_value]
-            
-        # For "RecursiveTokenChunker" option, split text from the selected index column into smaller chunks
-        elif chunkOption == "RecursiveTokenChunker":
-            chunker = RecursiveTokenChunker(
-                chunk_size=200
+        
+        if chunkOption == "SemanticChunker":
+            embedding_option = st.selectbox(
+                "Choose the embedding method for Semantic Chunker:",
+                ["TF-IDF", "Sentence-Transformers"]
             )
-            chunks = chunker.split_text(selected_column_value)
-            
-        elif chunkOption == "SemanticChunker":
-            if embedding_option == "TF-IDF":
-                chunker = ProtonxSemanticChunker(
-                    embedding_type="tfidf",
-                )
-            else:
-                chunker = ProtonxSemanticChunker(
-                    embedding_type="transformers", 
-                    model="all-MiniLM-L6-v2",
-                )
-            chunks = chunker.split_text(selected_column_value)
-        # elif chunkOption == "AgenticChunker":
-        #     if not st.session_state.gemini_api_key:
-        #         st.session_state.gemini_api_key = st.text_input(
-        #             "Enter your Gemini API Key:", 
-        #             type="password",
-        #             key="api_key_1")
-        #     else:
-        #         chunker = LLMAgenticChunker(
-        #             organisation="google", 
-        #             model_name="gemini-1.5-pro", 
-        #             api_key=st.session_state.gemini_api_key
-        #         )
-        #         chunks = chunker.split_text(selected_column_value)
-        # For each chunk, add a dictionary with the chunk and original_id to the list
-        for chunk in chunks:
-            chunk_record = {**row.to_dict(), 'chunk': chunk}
-            
-            # Rearrange the dictionary to ensure 'chunk' and '_id' come first
-            chunk_record = {
-                'chunk': chunk_record['chunk'],
-                # '_id': str(uuid.uuid4()),
-                **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
-            }
-            chunk_records.append(chunk_record)
+        chunk_records = []
 
-    # Convert the list of dictionaries to a DataFrame
-    chunks_df = pd.DataFrame(chunk_records)
+        # Iterate over rows in the original DataFrame
+        for index, row in df.iterrows():
 
-    # Display the result
-    st.write("Number of chunks:", len(chunks_df))
-    st.dataframe(chunks_df)
+            # For "No Chunking" option, treat the selected index column as a single "chunk"
+            chunker = None
+            selected_column_value = row[index_column]
+            chunks = []
+            if not(type(selected_column_value) == str and len(selected_column_value) > 0):
+                continue
+            if chunkOption == "No Chunking":
+                # Use the selected index_column
+                chunks = [selected_column_value]
+                
+            # For "RecursiveTokenChunker" option, split text from the selected index column into smaller chunks
+            elif chunkOption == "RecursiveTokenChunker":
+                chunker = RecursiveTokenChunker(
+                    chunk_size=200
+                )
+                chunks = chunker.split_text(selected_column_value)
+                
+            elif chunkOption == "SemanticChunker":
+                if embedding_option == "TF-IDF":
+                    chunker = ProtonxSemanticChunker(
+                        embedding_type="tfidf",
+                    )
+                else:
+                    chunker = ProtonxSemanticChunker(
+                        embedding_type="transformers", 
+                        model="all-MiniLM-L6-v2",
+                    )
+                chunks = chunker.split_text(selected_column_value)
+            # elif chunkOption == "AgenticChunker":
+            #     if not st.session_state.gemini_api_key:
+            #         st.session_state.gemini_api_key = st.text_input(
+            #             "Enter your Gemini API Key:", 
+            #             type="password",
+            #             key="api_key_1")
+            #     else:
+            #         chunker = LLMAgenticChunker(
+            #             organisation="google", 
+            #             model_name="gemini-1.5-pro", 
+            #             api_key=st.session_state.gemini_api_key
+            #         )
+            #         chunks = chunker.split_text(selected_column_value)
+            # For each chunk, add a dictionary with the chunk and original_id to the list
+            for chunk in chunks:
+                chunk_record = {**row.to_dict(), 'chunk': chunk}
+                
+                # Rearrange the dictionary to ensure 'chunk' and '_id' come first
+                chunk_record = {
+                    'chunk': chunk_record['chunk'],
+                    # '_id': str(uuid.uuid4()),
+                    **{k: v for k, v in chunk_record.items() if k not in ['chunk', '_id']}
+                }
+                chunk_records.append(chunk_record)
+
+        # Convert the list of dictionaries to a DataFrame
+        chunks_df = pd.DataFrame(chunk_records)
+
+        # Display the result
+        st.write("Number of chunks:", len(chunks_df))
+        st.dataframe(chunks_df)
 
 
 
@@ -271,7 +297,7 @@ if st.session_state.data_saved_success:
 
 
 # Step 3: Define which columns LLMs should answer from
-if uploaded_file:
+if uploaded_files:
     columns_to_answer = st.multiselect(
         "Select one or more columns LLMs should answer from (multiple selections allowed):", 
         df.columns
@@ -279,8 +305,7 @@ if uploaded_file:
 
 
 
-if "gemini_api_key" not in st.session_state:
-
+if not st.session_state.gemini_api_key:
     # Step 2: Setup LLMs (Gemini Only)
     header_i += 1
     header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
