@@ -1,6 +1,11 @@
+import os
 import math
 import uuid
 import tiktoken
+import platform
+import streamlit as st
+import requests
+
 
 def process_batch(batch_df, model, collection):
     """Encode and save the batch data to Chroma in batches where batch size is specified."""
@@ -60,3 +65,7 @@ def openai_token_count(string: str) -> int:
     encoding = tiktoken.get_encoding("cl100k_base")
     num_tokens = len(encoding.encode(string, disallowed_special=()))
     return num_tokens
+
+
+
+

@@ -9,10 +9,12 @@ import google.generativeai as genai
 from IPython.display import Markdown
 from chunking import RecursiveTokenChunker, LLMAgenticChunker, ProtonxSemanticChunker
 from utils import process_batch, divide_dataframe, get_search_result
+from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS
 import time
 import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
+
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -68,6 +70,7 @@ if "client" not in st.session_state:
 # Initialize session state for collection and model
 if "collection" not in st.session_state:
     st.session_state.collection = None
+
 
 
 # Check if the collection exists, if not, create a new one
@@ -303,17 +306,17 @@ if uploaded_files:
         df.columns
     )
 
+# Step 2: Setup LLMs (Gemini Only)
+header_i += 1
+header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
+st.header(header_text_llm)
+# Example user selection
+llm_choice = st.selectbox("Choose Model Source:", ["Online", "Local (Ollama)"])
 
-
-if not st.session_state.gemini_api_key:
-    # Step 2: Setup LLMs (Gemini Only)
-    header_i += 1
-    header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
-    st.header(header_text_llm)
-
+if llm_choice == "Online" and not st.session_state.gemini_api_key:
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
-
+    st.session_state.llm_type = "gemini"
     # Input Gemini API key
     st.session_state.gemini_api_key = st.text_input(
         "Enter your Gemini API Key:", 
@@ -328,6 +331,19 @@ if not st.session_state.gemini_api_key:
     # Show blue tick if API key was entered successfully
     if api_key_success:
         st.markdown("✅ **API Key Saved Successfully!**")
+elif llm_choice == "Local (Ollama)":
+    # Install and run Ollama Docker container based on hardware
+    if st.button("Initialize Ollama Container"):
+        with st.spinner("Setting up Ollama container..."):
+            run_ollama_container()
+        
+    selected_model = st.selectbox("Select a model to run", list(OLLAMA_MODEL_OPTIONS.keys()))
+    real_name_model = OLLAMA_MODEL_OPTIONS[selected_model]
+
+    if st.button("Run Selected Model"):
+        localLLms = run_ollama_model(real_name_model)
+        st.session_state.local_llms = localLLms
+        st.session_state.llm_type = "local"
 
 
 # Step 3: Interactive Chatbot
@@ -382,16 +398,29 @@ if prompt := st.chat_input("What is up?"):
                 
                 enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
-                # Step 3: Feed enhanced prompt to Gemini LLM for completion
-                response = st.session_state.gemini_model.generate_content(enhanced_prompt)
+                if st.session_state.llm_type == "gemini":
+                    # Step 3: Feed enhanced prompt to Gemini LLM for completion
+                    response = st.session_state.gemini_model.generate_content(enhanced_prompt)
 
-                content = response.candidates[0].content.parts[0].text
+                    content = response.candidates[0].content.parts[0].text
 
-                # Display the extracted content in the Streamlit app
-                st.markdown(content)
+                    # Display the extracted content in the Streamlit app
+                    st.markdown(content)
 
-                # Update chat history
-                st.session_state.chat_history.append({"role": "assistant", "content": content})
+                    # Update chat history
+                    st.session_state.chat_history.append({"role": "assistant", "content": content})
+                elif st.session_state.llm_type == "local":
+                    messages = [
+                        {
+                            "content": enhanced_prompt,
+                            "role": "user"
+                        }
+                    ]
+
+                    response = st.session_state.local_llms.chat(messages)
+
+                    st.markdown(response['content'])
+                    st.session_state.chat_history.append(response['content'])
             else:
                 st.warning("Please select columns for the chatbot to answer from.")
         else:
