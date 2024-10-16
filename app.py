@@ -14,6 +14,7 @@ import time
 import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
+from components import notify
 
 
 def clear_session_state():
@@ -64,9 +65,6 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
     "Number of documnents retrieval", min_value=1, max_value=50, value=10, step=1, help="Set the number of document which will be retrieved."
 )
 
-# Setup Gemini API key
-if "gemini_api_key" not in st.session_state:
-    st.session_state.gemini_api_key = None
 
 if "gemini_model" not in st.session_state:
     st.session_state.gemini_model = None
@@ -157,26 +155,40 @@ if uploaded_files is not None:
             st.write(f"Selected column for indexing: {index_column}")
         else:
             st.warning("The DataFrame is empty, please upload valid data.")
-
+            
         # Disable the "AgenticChunker" option if the API key is not provided
         chunk_options = [
             "No Chunking",
             "RecursiveTokenChunker", 
             "SemanticChunker",
-            # "AgenticChunker",
+            "AgenticChunker",
         ]
 
         # Step 4: Chunking options
-        chunkOption = st.radio(
+        if not st.session_state.get("gemini_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
+            currentChunkerIdx = 0
+            st.session_state.chunkOption = "No Chunking"
+            notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section", "error")
+        elif not st.session_state.get("chunkOption"):
+            currentChunkerIdx = 0
+            st.session_state.chunkOption = "No Chunking"
+        else:
+            currentChunkerIdx = chunk_options.index(st.session_state.get("chunkOption")) 
+        
+        st.radio(
             "Please select one of the options below.",
             chunk_options,
             captions=[
                 "Keep the original document",
                 "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
                 "Chunking with semantic comparison between chunks",
-                # "Let LLM decide chunking (requires Gemini API)"
-            ]
+                "Let LLM decide chunking (requires Gemini API)"
+            ],
+            key="chunkOption",
+            index=currentChunkerIdx
         )
+        
+        chunkOption = st.session_state.get("chunkOption")
         
         if chunkOption == "SemanticChunker":
             embedding_option = st.selectbox(
@@ -216,19 +228,13 @@ if uploaded_files is not None:
                         model="all-MiniLM-L6-v2",
                     )
                 chunks = chunker.split_text(selected_column_value)
-            # elif chunkOption == "AgenticChunker":
-            #     if not st.session_state.gemini_api_key:
-            #         st.session_state.gemini_api_key = st.text_input(
-            #             "Enter your Gemini API Key:", 
-            #             type="password",
-            #             key="api_key_1")
-            #     else:
-            #         chunker = LLMAgenticChunker(
-            #             organisation="google", 
-            #             model_name="gemini-1.5-pro", 
-            #             api_key=st.session_state.gemini_api_key
-            #         )
-            #         chunks = chunker.split_text(selected_column_value)
+            elif chunkOption == "AgenticChunker" and  st.session_state.get("gemini_api_key"):
+                chunker = LLMAgenticChunker(
+                    organisation="google", 
+                    model_name="gemini-1.5-pro", 
+                    api_key=st.session_state.get('gemini_api_key')
+                )
+                chunks = chunker.split_text(selected_column_value)
             # For each chunk, add a dictionary with the chunk and original_id to the list
             for chunk in chunks:
                 chunk_record = {**row.to_dict(), 'chunk': chunk}
@@ -322,18 +328,19 @@ st.header(header_text_llm)
 # Example user selection
 llm_choice = st.selectbox("Choose Model Source:", ["Online", "Local (Ollama)"])
 
-if llm_choice == "Online" and not st.session_state.gemini_api_key:
+if llm_choice == "Online":
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
     st.session_state.llm_type = "gemini"
     # Input Gemini API key
     st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
-    st.session_state.gemini_api_key = st.text_input(
+    st.text_input(
         "Enter your Gemini API Key:", 
         type="password", 
-        key="api_key_2")   
-    if st.session_state.gemini_api_key:
-        genai.configure(api_key=st.session_state.gemini_api_key)
+        key="gemini_api_key")   
+    
+    if st.session_state.get('gemini_api_key'):
+        genai.configure(api_key=st.session_state.get('gemini_api_key'))
         st.success("Gemini API Key saved successfully!")
         st.session_state.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
         api_key_success = True
