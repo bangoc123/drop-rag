@@ -122,7 +122,7 @@ class LocalLlms:
             }
 
             response = requests.post(
-                "http://localhost:11434/api/chat",
+                f"{self.base_url}/api/chat",
                 json=data
             )
             
@@ -153,6 +153,25 @@ class LocalLlms:
         except Exception as e:
             print(f"Error: {e}")
             return None
+        
+    def generate_content(self, prompt):
+        print('---going')
+        data = {
+            "model": self.model_name, 
+            "prompt": prompt,
+            "stream": False,       
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/api/generate",
+            json=data
+        )
+
+        if response.status_code == 200:
+            response_json = response.json()
+            return response_json.get("response")
+        else:
+            return ""
 
 def run_ollama_model(model_name="gemma2:2b"):
     # Check if the Ollama server is running

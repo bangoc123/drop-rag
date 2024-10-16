@@ -8,14 +8,16 @@ import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
 from chunking import RecursiveTokenChunker, LLMAgenticChunker, ProtonxSemanticChunker
-from utils import process_batch, divide_dataframe, get_search_result
+from utils import process_batch, divide_dataframe
+from search import vector_search, keywords_search, hyde_search
 from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS
+from llms.onlinellms import OnlineLLMs
 import time
 import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 from components import notify
-from constant import NO_CHUNKING, GEMINI, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE
+from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -66,8 +68,8 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
 )
 
 
-if "gemini_model" not in st.session_state:
-    st.session_state.gemini_model = None
+if "llm_model" not in st.session_state:
+    st.session_state.llm_model = None
 
 # Initialize session state for chroma client, collection, and model
 if "client" not in st.session_state:
@@ -89,6 +91,7 @@ if st.session_state.collection is None:
 
 
 # Step 1: File Upload (CSV, JSON, PDF, or DOCX) and Column Detection
+st.subheader("Upload data", divider=True)
 uploaded_files = st.file_uploader(
     "Upload CSV, JSON, PDF, or DOCX files", 
     type=["csv", "json", "pdf", "docx"], 
@@ -165,7 +168,7 @@ if uploaded_files is not None:
         ]
 
         # Step 4: Chunking options
-        if not st.session_state.get("gemini_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
+        if not st.session_state.get("llm_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
             currentChunkerIdx = 0
             st.session_state.chunkOption = NO_CHUNKING
             notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section", "error")
@@ -228,11 +231,11 @@ if uploaded_files is not None:
                         model="all-MiniLM-L6-v2",
                     )
                 chunks = chunker.split_text(selected_column_value)
-            elif chunkOption == "AgenticChunker" and  st.session_state.get("gemini_api_key"):
+            elif chunkOption == "AgenticChunker" and  st.session_state.get("llm_api_key"):
                 chunker = LLMAgenticChunker(
                     organisation="google", 
                     model_name="gemini-1.5-pro", 
-                    api_key=st.session_state.get('gemini_api_key')
+                    api_key=st.session_state.get('llm_api_key')
                 )
                 chunks = chunker.split_text(selected_column_value)
             # For each chunk, add a dictionary with the chunk and original_id to the list
@@ -301,7 +304,6 @@ if st.button("Save Data"):
     except Exception as e:
         st.error(f"Error saving data to Chroma: {str(e)}")
 
-
 # Show blue tick if data has been saved successfully
 header_i = 1
 header_text = "{}. Setup data ✅".format(header_i) if st.session_state.data_saved_success else "{}. Setup data".format(header_i)
@@ -324,7 +326,7 @@ if uploaded_files:
 
 # Step 2: Setup LLMs (Gemini Only)
 header_i += 1
-header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'gemini_model' in st.session_state else "{}. Setup LLMs".format(header_i)
+header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'llm_model' in st.session_state else "{}. Setup LLMs".format(header_i)
 st.header(header_text_llm)
 # Example user selection
 llm_choice = st.selectbox("Choose Model Source:", ["Online", "Local (Ollama)"])
@@ -332,18 +334,20 @@ llm_choice = st.selectbox("Choose Model Source:", ["Online", "Local (Ollama)"])
 if llm_choice == "Online":
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
-    st.session_state.llm_type = GEMINI
+    st.session_state.llm_type = ONLINE_LLM
     # Input Gemini API key
     st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
     st.text_input(
         "Enter your Gemini API Key:", 
         type="password", 
-        key="gemini_api_key")   
+        key="llm_api_key")   
     
-    if st.session_state.get('gemini_api_key'):
-        genai.configure(api_key=st.session_state.get('gemini_api_key'))
+    if st.session_state.get('llm_api_key'):
+
         st.success("Gemini API Key saved successfully!")
-        st.session_state.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+        st.session_state.llm_model = OnlineLLMs(
+            "gemini",
+            api_key=st.session_state.get('llm_api_key'))
         api_key_success = True
 
     # Show blue tick if API key was entered successfully
@@ -361,11 +365,29 @@ elif llm_choice == "Local (Ollama)":
 
     if st.button("Run Selected Model"):
         localLLms = run_ollama_model(real_name_model)
+
+        st.session_state.llm_type = LOCAL_LLM
         st.session_state.local_llms = localLLms
-        st.session_state.llm_type = "local"
+        
 
+# Step 3: Setup LLMs (Gemini Only)
+header_i += 1
+header_text_llm = "{}. Set up search algorithms".format(header_i)
+st.header(header_text_llm)
 
-# Step 3: Interactive Chatbot
+search_option = st.radio(
+    "Please select one of the options below.",
+    ["Keywords Search", "Vector Search", "Hyde Search"],
+    captions = [
+        "Search using traditional keyword matching",
+        "Search using vector similarity",
+        "Search using the HYDE algorithm"
+    ],
+    key="search_option",
+    index=0
+)
+
+# Step 4: Interactive Chatbot
 header_i += 1
 st.header("{}. Interactive Chatbot".format(header_i))
 
@@ -393,16 +415,49 @@ if prompt := st.chat_input("What is up?"):
     with st.chat_message(ASSISTANT):
         if st.session_state.collection is not None:
             # Combine retrieved data to enhance the prompt based on selected columns
+            metadatas, retrieved_data = [], ""
             if columns_to_answer:
-                metadatas, retrieved_data = get_search_result(
-                    st.session_state.embedding_model, 
-                    prompt, 
-                    st.session_state.collection, 
-                    columns_to_answer,
-                    st.session_state.number_docs_retrieval
-                )
+                if search_option == "Vector Search":
+                    metadatas, retrieved_data = vector_search(
+                        st.session_state.embedding_model, 
+                        prompt, 
+                        st.session_state.collection, 
+                        columns_to_answer,
+                        st.session_state.number_docs_retrieval
+                    )
+                    
+                    enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
-               # Flatten the list of lists (metadatas) and convert to a DataFrame
+                elif search_option == "Keywords Search":
+                    metadatas, retrieved_data = keywords_search(
+                        prompt,
+                        st.session_state.collection,
+                        columns_to_answer,
+                        st.session_state.number_docs_retrieval
+                    )
+
+                    enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
+
+                elif search_option == "Hyde Search":
+              
+                    if st.session_state.llm_type == ONLINE_LLM:
+                        model = st.session_state.llm_model
+                    else:
+                        model = st.session_state.local_llms
+
+
+                    metadatas, retrieved_data = hyde_search(
+                        st.session_state.llm_model,
+                        st.session_state.embedding_model,
+                        prompt,
+                        st.session_state.collection,
+                        columns_to_answer,
+                        st.session_state.number_docs_retrieval,
+                        num_samples=1
+                    )
+
+                    enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
+
                 if metadatas:
                     flattened_metadatas = [item for sublist in metadatas for item in sublist]  # Flatten the list of lists
                     
@@ -411,35 +466,25 @@ if prompt := st.chat_input("What is up?"):
                     
                     # Display the DataFrame in the sidebar
                     st.sidebar.subheader("Retrieval data")
+                    st.sidebar.write(st.session_state.collection.name)
                     st.sidebar.dataframe(metadata_df)
                 else:
                     st.sidebar.write("No metadata to display.")
-                
-                enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
-                if st.session_state.llm_type == GEMINI:
-                    # Step 3: Feed enhanced prompt to Gemini LLM for completion
-                    response = st.session_state.gemini_model.generate_content(enhanced_prompt)
-
-                    content = response.candidates[0].content.parts[0].text
+                if st.session_state.llm_type == ONLINE_LLM:
+                    # Generate content using the selected LLM model
+                    response = st.session_state.llm_model.generate_content(enhanced_prompt)
 
                     # Display the extracted content in the Streamlit app
-                    st.markdown(content)
+                    st.markdown(response)
 
                     # Update chat history
-                    st.session_state.chat_history.append({"role": ASSISTANT, "content": content})
-                elif st.session_state.llm_type == "local":
-                    messages = [
-                        {
-                            "content": enhanced_prompt,
-                            "role": USER
-                        }
-                    ]
+                    st.session_state.chat_history.append({"role": ASSISTANT, "content": response})
+                elif st.session_state.llm_type == LOCAL_LLM:
 
-                    response = st.session_state.local_llms.chat(messages)
-
-                    st.markdown(response['content'])
-                    st.session_state.chat_history.append(response['content'])
+                    response = st.session_state.local_llms.generate_content(enhanced_prompt)
+                    st.markdown(response)
+                    st.session_state.chat_history.append({"role": ASSISTANT, "content": response})
             else:
                 st.warning("Please select columns for the chatbot to answer from.")
         else:

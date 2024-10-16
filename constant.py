@@ -1,6 +1,8 @@
 NO_CHUNKING = "No Chunking"
 CHUNK = 'chunk'
 GEMINI = 'gemini'
+ONLINE_LLM = 'online_llm'
+LOCAL_LLM = 'local_llm'
 EN = 'en'
 ENGLISH = "English"
 VIETNAMESE = "Vietnamese"
