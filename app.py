@@ -38,17 +38,20 @@ language_choice = st.sidebar.radio("Select language:", ["English", "Vietnamese"]
 
 # Switch embedding model based on language choice
 if language_choice == "English":
-    if st.session_state.language != "en":
+    if st.session_state.language and st.session_state.language != "en":
+        st.session_state.language = "en"
+        st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
+    else:
         st.session_state.language = "en"
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
 elif language_choice == "Vietnamese":
-    if st.session_state.language != "vi":
+    if st.session_state.language and st.session_state.language != "vi":
         st.session_state.language = "vi"
         st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
         st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
 
-print(st.session_state.embedding_model)
 # Sidebar settings
 st.sidebar.header("Settings")
 
@@ -305,6 +308,7 @@ if st.session_state.data_saved_success:
 
 
 # Step 3: Define which columns LLMs should answer from
+columns_to_answer = None
 if uploaded_files:
     columns_to_answer = st.multiselect(
         "Select one or more columns LLMs should answer from (multiple selections allowed):", 
@@ -323,6 +327,7 @@ if llm_choice == "Online" and not st.session_state.gemini_api_key:
     api_key_success = False
     st.session_state.llm_type = "gemini"
     # Input Gemini API key
+    st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
     st.session_state.gemini_api_key = st.text_input(
         "Enter your Gemini API Key:", 
         type="password", 
@@ -337,6 +342,7 @@ if llm_choice == "Online" and not st.session_state.gemini_api_key:
     if api_key_success:
         st.markdown("✅ **API Key Saved Successfully!**")
 elif llm_choice == "Local (Ollama)":
+    st.markdown("Please install and run [Docker](https://docs.docker.com/engine/install/) before running Ollama locally.")
     # Install and run Ollama Docker container based on hardware
     if st.button("Initialize Ollama Container"):
         with st.spinner("Setting up Ollama container..."):
