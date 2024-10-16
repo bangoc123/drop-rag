@@ -1,0 +1,9 @@
+NO_CHUNKING = "No Chunking"
+CHUNK = 'chunk'
+GEMINI = 'gemini'
+EN = 'en'
+ENGLISH = "English"
+VIETNAMESE = "Vietnamese"
+VI = 'vi'
+USER = 'user'
+ASSISTANT = 'assistant'
