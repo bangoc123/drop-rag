@@ -19,6 +19,9 @@ class ProtonxSemanticChunker(BaseChunker):
         Embeds sentences using the specified embedding method.
         Supports 'tfidf' and 'transformers' embeddings.
         """
+        sentences = [item for item in sentences if item]
+        if not len(sentences):
+            return "EMPTY"
         if self.embedding_type == "tfidf":
             vectorizer = TfidfVectorizer().fit_transform(sentences)
             return vectorizer.toarray()
@@ -35,6 +38,9 @@ class ProtonxSemanticChunker(BaseChunker):
 
         # Vectorize the sentences for similarity checking
         vectors = self.embed_function(sentences)
+        
+        if isinstance(vectors, str):
+            return []
 
         # Calculate pairwise cosine similarity between sentences
         similarities = cosine_similarity(vectors)
