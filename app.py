@@ -38,15 +38,17 @@ language_choice = st.sidebar.radio("Select language:", ["English", "Vietnamese"]
 
 # Switch embedding model based on language choice
 if language_choice == "English":
-    st.session_state.language = "en"
-    st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-    st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
+    if st.session_state.language != "en":
+        st.session_state.language = "en"
+        st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
 elif language_choice == "Vietnamese":
-    st.session_state.language = "vi"
-    st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
-    st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
+    if st.session_state.language != "vi":
+        st.session_state.language = "vi"
+        st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
+        st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
 
-
+print(st.session_state.embedding_model)
 # Sidebar settings
 st.sidebar.header("Settings")
 
@@ -62,6 +64,9 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
 # Setup Gemini API key
 if "gemini_api_key" not in st.session_state:
     st.session_state.gemini_api_key = None
+
+if "gemini_model" not in st.session_state:
+    st.session_state.gemini_model = None
 
 # Initialize session state for chroma client, collection, and model
 if "client" not in st.session_state:
