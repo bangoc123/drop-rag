@@ -14,7 +14,8 @@ import time
 import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
-
+from components import notify
+from constant import NO_CHUNKING, GEMINI, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -28,27 +29,27 @@ st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c
 
 # Initialize session state for language choice and model embedding
 if "language" not in st.session_state:
-    st.session_state.language = "en"  # Default language is English
+    st.session_state.language = EN  # Default language is English
 if "embedding_model" not in st.session_state:
     st.session_state.embedding_model = None  # Placeholder for the embedding model
 
 # Language selection popup
 st.sidebar.subheader("Choose Language")
-language_choice = st.sidebar.radio("Select language:", ["English", "Vietnamese"])
+language_choice = st.sidebar.radio("Select language:", [ENGLISH, VIETNAMESE])
 
 # Switch embedding model based on language choice
-if language_choice == "English":
-    if st.session_state.language and st.session_state.language != "en":
-        st.session_state.language = "en"
+if language_choice == ENGLISH:
+    if st.session_state.language and st.session_state.language != EN:
+        st.session_state.language = EN
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
     else:
-        st.session_state.language = "en"
+        st.session_state.language = EN
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
-elif language_choice == "Vietnamese":
-    if st.session_state.language and st.session_state.language != "vi":
-        st.session_state.language = "vi"
+elif language_choice == VIETNAMESE:
+    if st.session_state.language and st.session_state.language != VI:
+        st.session_state.language = VI
         st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
         st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
 
@@ -64,9 +65,6 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
     "Number of documnents retrieval", min_value=1, max_value=50, value=10, step=1, help="Set the number of document which will be retrieved."
 )
 
-# Setup Gemini API key
-if "gemini_api_key" not in st.session_state:
-    st.session_state.gemini_api_key = None
 
 if "gemini_model" not in st.session_state:
     st.session_state.gemini_model = None
@@ -83,9 +81,9 @@ if "collection" not in st.session_state:
 
 # Check if the collection exists, if not, create a new one
 if st.session_state.collection is None:
-    random_collection_name = f"rag_collection_{uuid.uuid4().hex[:8]}"
+    st.session_state.random_collection_name = f"rag_collection_{uuid.uuid4().hex[:8]}"
     st.session_state.collection = st.session_state.client.get_or_create_collection(
-        name=random_collection_name,
+        name=st.session_state.random_collection_name,
         metadata={"description": "A collection for RAG system"},
     )
 
@@ -157,26 +155,40 @@ if uploaded_files is not None:
             st.write(f"Selected column for indexing: {index_column}")
         else:
             st.warning("The DataFrame is empty, please upload valid data.")
-
+            
         # Disable the "AgenticChunker" option if the API key is not provided
         chunk_options = [
-            "No Chunking",
+            NO_CHUNKING,
             "RecursiveTokenChunker", 
             "SemanticChunker",
-            # "AgenticChunker",
+            "AgenticChunker",
         ]
 
         # Step 4: Chunking options
-        chunkOption = st.radio(
+        if not st.session_state.get("gemini_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
+            currentChunkerIdx = 0
+            st.session_state.chunkOption = NO_CHUNKING
+            notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section", "error")
+        elif not st.session_state.get("chunkOption"):
+            currentChunkerIdx = 0
+            st.session_state.chunkOption = NO_CHUNKING
+        else:
+            currentChunkerIdx = chunk_options.index(st.session_state.get("chunkOption")) 
+        
+        st.radio(
             "Please select one of the options below.",
             chunk_options,
             captions=[
                 "Keep the original document",
                 "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
                 "Chunking with semantic comparison between chunks",
-                # "Let LLM decide chunking (requires Gemini API)"
-            ]
+                "Let LLM decide chunking (requires Gemini API)"
+            ],
+            key="chunkOption",
+            index=currentChunkerIdx
         )
+        
+        chunkOption = st.session_state.get("chunkOption")
         
         if chunkOption == "SemanticChunker":
             embedding_option = st.selectbox(
@@ -194,7 +206,7 @@ if uploaded_files is not None:
             chunks = []
             if not(type(selected_column_value) == str and len(selected_column_value) > 0):
                 continue
-            if chunkOption == "No Chunking":
+            if chunkOption == NO_CHUNKING:
                 # Use the selected index_column
                 chunks = [selected_column_value]
                 
@@ -216,19 +228,13 @@ if uploaded_files is not None:
                         model="all-MiniLM-L6-v2",
                     )
                 chunks = chunker.split_text(selected_column_value)
-            # elif chunkOption == "AgenticChunker":
-            #     if not st.session_state.gemini_api_key:
-            #         st.session_state.gemini_api_key = st.text_input(
-            #             "Enter your Gemini API Key:", 
-            #             type="password",
-            #             key="api_key_1")
-            #     else:
-            #         chunker = LLMAgenticChunker(
-            #             organisation="google", 
-            #             model_name="gemini-1.5-pro", 
-            #             api_key=st.session_state.gemini_api_key
-            #         )
-            #         chunks = chunker.split_text(selected_column_value)
+            elif chunkOption == "AgenticChunker" and  st.session_state.get("gemini_api_key"):
+                chunker = LLMAgenticChunker(
+                    organisation="google", 
+                    model_name="gemini-1.5-pro", 
+                    api_key=st.session_state.get('gemini_api_key')
+                )
+                chunks = chunker.split_text(selected_column_value)
             # For each chunk, add a dictionary with the chunk and original_id to the list
             for chunk in chunks:
                 chunk_record = {**row.to_dict(), 'chunk': chunk}
@@ -289,6 +295,7 @@ if st.button("Save Data"):
             my_bar.empty()
 
             st.success("Data saved to Chroma vector store successfully!")
+            st.markdown("Collection name: `{}`".format(st.session_state.random_collection_name))
             st.session_state.data_saved_success = True
 
     except Exception as e:
@@ -322,18 +329,19 @@ st.header(header_text_llm)
 # Example user selection
 llm_choice = st.selectbox("Choose Model Source:", ["Online", "Local (Ollama)"])
 
-if llm_choice == "Online" and not st.session_state.gemini_api_key:
+if llm_choice == "Online":
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
-    st.session_state.llm_type = "gemini"
+    st.session_state.llm_type = GEMINI
     # Input Gemini API key
     st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
-    st.session_state.gemini_api_key = st.text_input(
+    st.text_input(
         "Enter your Gemini API Key:", 
         type="password", 
-        key="api_key_2")   
-    if st.session_state.gemini_api_key:
-        genai.configure(api_key=st.session_state.gemini_api_key)
+        key="gemini_api_key")   
+    
+    if st.session_state.get('gemini_api_key'):
+        genai.configure(api_key=st.session_state.get('gemini_api_key'))
         st.success("Gemini API Key saved successfully!")
         st.session_state.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
         api_key_success = True
@@ -375,14 +383,14 @@ for message in st.session_state.chat_history:
 
 if prompt := st.chat_input("What is up?"):
     # Add user message to chat history
-    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    st.session_state.chat_history.append({"role": USER, "content": prompt})
     # Display user message in chat message container
-    with st.chat_message("user"):
+    with st.chat_message(USER):
         st.markdown(prompt)
     # Display assistant response in chat message container
     # Prepare the payload for the request
 
-    with st.chat_message("assistant"):
+    with st.chat_message(ASSISTANT):
         if st.session_state.collection is not None:
             # Combine retrieved data to enhance the prompt based on selected columns
             if columns_to_answer:
@@ -409,7 +417,7 @@ if prompt := st.chat_input("What is up?"):
                 
                 enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
-                if st.session_state.llm_type == "gemini":
+                if st.session_state.llm_type == GEMINI:
                     # Step 3: Feed enhanced prompt to Gemini LLM for completion
                     response = st.session_state.gemini_model.generate_content(enhanced_prompt)
 
@@ -419,12 +427,12 @@ if prompt := st.chat_input("What is up?"):
                     st.markdown(content)
 
                     # Update chat history
-                    st.session_state.chat_history.append({"role": "assistant", "content": content})
+                    st.session_state.chat_history.append({"role": ASSISTANT, "content": content})
                 elif st.session_state.llm_type == "local":
                     messages = [
                         {
                             "content": enhanced_prompt,
-                            "role": "user"
+                            "role": USER
                         }
                     ]
 
