@@ -32,6 +32,9 @@ class ProtonxSemanticChunker(BaseChunker):
         
     def split_text(self, text):
         sentences = nltk.sent_tokenize(text)  # Extract sentences
+        sentences = [item for item in sentences if item and item.strip()]
+        if not len(sentences):
+            return []
 
         # Vectorize the sentences for similarity checking
         vectors = self.embed_function(sentences)
