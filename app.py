@@ -420,7 +420,8 @@ st.sidebar.markdown(f"6. Chunk Size: **{st.session_state.chunk_size}**")
 st.sidebar.markdown(f"7. Number of Documents Retrieval: **{st.session_state.number_docs_retrieval}**")
 st.sidebar.markdown(f"8. Data Saved: **{'Yes' if st.session_state.data_saved_success else 'No'}**")
 st.sidebar.markdown(f"9. LLM API Key Set: **{'Yes' if st.session_state.get('llm_api_key') else 'No'}**")
-st.sidebar.markdown(f"10. Chunking Option: **{st.session_state.chunkOption}**")
+if st.session_state.get('chunkOption'):
+    st.sidebar.markdown(f"10. Chunking Option: **{st.session_state.chunkOption}**")
 
 
 # Step 3: Setup LLMs (Gemini Only)
@@ -504,7 +505,7 @@ if prompt := st.chat_input("What is up?"):
 
 
                     metadatas, retrieved_data = hyde_search(
-                        st.session_state.llm_model,
+                        model,
                         st.session_state.embedding_model,
                         prompt,
                         st.session_state.collection,
