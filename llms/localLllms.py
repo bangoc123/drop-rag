@@ -7,6 +7,7 @@ import json
 
 # Available models with command and details
 OLLAMA_MODEL_OPTIONS = {
+
     "Llama 3.2 (3B - 2.0GB)": "llama3.2",
     "Llama 3.2 (1B - 1.3GB)": "llama3.2:1b",
     "Llama 3.1 (8B - 4.7GB)": "llama3.1",
@@ -25,6 +26,11 @@ OLLAMA_MODEL_OPTIONS = {
     "Llama 2 Uncensored (7B - 3.8GB)": "llama2-uncensored",
     "LLaVA (7B - 4.5GB)": "llava",
     "Solar (10.7B - 6.1GB)": "solar"
+}
+
+GGUF_MODEL_OPTIONS ={
+    "Llama-3.2-1B-Instruct-GGUF": "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
+    "SmolLM-1.7B-Instruct-v0.2-GGUF": "hf.co/MaziyarPanahi/SmolLM-1.7B-Instruct-v0.2-GGUF",
 }
 
 
@@ -155,12 +161,12 @@ class LocalLlms:
             return None
         
     def generate_content(self, prompt):
-        print('---going')
         data = {
             "model": self.model_name, 
             "prompt": prompt,
             "stream": False,       
         }
+
         
         response = requests.post(
             f"{self.base_url}/api/generate",
