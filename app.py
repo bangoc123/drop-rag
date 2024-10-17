@@ -10,14 +10,14 @@ from IPython.display import Markdown
 from chunking import RecursiveTokenChunker, LLMAgenticChunker, ProtonxSemanticChunker
 from utils import process_batch, divide_dataframe
 from search import vector_search, keywords_search, hyde_search
-from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS
+from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS, GGUF_MODEL_OPTIONS
 from llms.onlinellms import OnlineLLMs
 import time
 import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 from components import notify
-from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM
+from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -54,6 +54,7 @@ elif language_choice == VIETNAMESE:
         st.session_state.language = VI
         st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
         st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
+
 
 # Sidebar settings
 st.sidebar.header("Settings")
@@ -335,6 +336,7 @@ if llm_choice == "Online":
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
     st.session_state.llm_type = ONLINE_LLM
+    st.session_state.llm_name = GEMINI
     # Input Gemini API key
     st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
     st.text_input(
@@ -360,15 +362,41 @@ elif llm_choice == "Local (Ollama)":
         with st.spinner("Setting up Ollama container..."):
             run_ollama_container()
         
-    selected_model = st.selectbox("Select a model to run", list(OLLAMA_MODEL_OPTIONS.keys()))
-    real_name_model = OLLAMA_MODEL_OPTIONS[selected_model]
+    
+    model_format = st.radio(
+        label="### Select the model format",
+        options=["Normal", "High Performance"],
+        captions=["HuggingFace normal format", "HuggingFace GGUF format"],
+        index=0,
+    )
+
+    if model_format == "Normal":
+        selected_model = st.selectbox("Select a model to run", list(OLLAMA_MODEL_OPTIONS.keys()))
+        real_name_model = OLLAMA_MODEL_OPTIONS[selected_model]
+    elif model_format == "High Performance":
+        selected_model = st.selectbox("Select a model to run", list(GGUF_MODEL_OPTIONS.keys()))
+        real_name_model = GGUF_MODEL_OPTIONS[selected_model]
+
+        st.markdown("Or type the name of the model to confirm. The list of models from HuggingFace in GGUF format [here](https://huggingface.co/models?library=gguf&sort=trending)")
+        
+        type_selected_model = st.text_input(
+            "The GGUF model's name should be: `hf.co/{username}/{repository}`. Check the [document](https://huggingface.co/docs/hub/en/ollama)", 
+            key="type_selected_model")
+        if type_selected_model:
+            real_name_model = type_selected_model
 
     if st.button("Run Selected Model"):
         localLLms = run_ollama_model(real_name_model)
-
+        st.session_state.llm_name = real_name_model
         st.session_state.llm_type = LOCAL_LLM
         st.session_state.local_llms = localLLms
-        
+
+
+st.sidebar.subheader("Information")
+st.sidebar.write("Collection name: {}".format(st.session_state.collection.name))
+st.sidebar.write("LLM model: {}".format(st.session_state.llm_name))
+st.sidebar.write("Local or APIs: {}".format(st.session_state.llm_type))
+                   
 
 # Step 3: Setup LLMs (Gemini Only)
 header_i += 1
@@ -401,6 +429,7 @@ if "chat_history" not in st.session_state:
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+
 
 
 if prompt := st.chat_input("What is up?"):
@@ -458,6 +487,7 @@ if prompt := st.chat_input("What is up?"):
 
                     enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
+                
                 if metadatas:
                     flattened_metadatas = [item for sublist in metadatas for item in sublist]  # Flatten the list of lists
                     
@@ -465,8 +495,8 @@ if prompt := st.chat_input("What is up?"):
                     metadata_df = pd.DataFrame(flattened_metadatas)
                     
                     # Display the DataFrame in the sidebar
+                 
                     st.sidebar.subheader("Retrieval data")
-                    st.sidebar.write(st.session_state.collection.name)
                     st.sidebar.dataframe(metadata_df)
                 else:
                     st.sidebar.write("No metadata to display.")
