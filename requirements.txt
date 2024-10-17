@@ -9,3 +9,4 @@ openai==1.35.3
 tiktoken==0.7.0
 nltk==3.8.1
 ollama==0.3.3
+python-dotenv==1.0.1

@@ -4,6 +4,16 @@ import requests
 import streamlit as st
 import subprocess
 import json
+import os
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get the value of OLLAMA_ENDPOINT
+ollama_endpoint = os.getenv('OLLAMA_ENDPOINT') or "http://localhost:11434"
+
 
 # Available models with command and details
 OLLAMA_MODEL_OPTIONS = {
@@ -101,7 +111,7 @@ def run_ollama_container():
 class LocalLlms:
     def __init__(self, model_name):
         self.model_name = model_name
-        self.base_url = "http://localhost:11434"
+        self.base_url = ollama_endpoint
         self.pull_model()
 
     def pull_model(self):
@@ -182,7 +192,7 @@ class LocalLlms:
 def run_ollama_model(model_name="gemma2:2b"):
     # Check if the Ollama server is running
     try:
-        response = requests.get("http://localhost:11434")
+        response = requests.get(ollama_endpoint)
         if response.status_code != 200:
             st.error("Ollama server is not running. Please start the server first.")
             return None

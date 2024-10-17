@@ -23,6 +23,13 @@ def clear_session_state():
     for key in st.session_state.keys():
         del st.session_state[key]
 
+# Button to clear all session state
+# st.sidebar.header("Clear Session State")
+# if st.sidebar.button("Clear Session State"):
+#     clear_session_state()
+#     st.success("Session state has been cleared successfully!")
+
+
 
 # Initialize the page
 st.title("Drag and Drop RAG")
@@ -34,6 +41,7 @@ if "language" not in st.session_state:
     st.session_state.language = EN  # Default language is English
 if "embedding_model" not in st.session_state:
     st.session_state.embedding_model = None  # Placeholder for the embedding model
+
 
 # Language selection popup
 st.sidebar.subheader("Choose Language")
@@ -56,16 +64,27 @@ elif language_choice == VIETNAMESE:
         st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
 
 
+
 # Sidebar settings
 st.sidebar.header("Settings")
 
 # Chunk size input
 st.session_state.chunk_size = st.sidebar.number_input(
-    "Chunk Size", min_value=50, max_value=1000, value=200, step=50, help="Set the size of each chunk in terms of tokens."
+    "Chunk Size",
+    min_value=50, 
+    max_value=1000, 
+    value=200, 
+    step=50, 
+    help="Set the size of each chunk in terms of tokens."
 )
 
 st.session_state.number_docs_retrieval = st.sidebar.number_input(
-    "Number of documnents retrieval", min_value=1, max_value=50, value=10, step=1, help="Set the number of document which will be retrieved."
+    "Number of documnents retrieval", 
+    min_value=1, 
+    max_value=50,
+    value=3,
+    step=1,
+    help="Set the number of document which will be retrieved."
 )
 
 
@@ -261,7 +280,6 @@ if uploaded_files is not None:
 
 
 # Button to save data
-# Button to save data
 if st.button("Save Data"):
     try:
         collection = st.session_state.collection
@@ -286,7 +304,7 @@ if st.button("Save Data"):
             for i, batch_df in enumerate(df_batches):
                 if batch_df.empty:
                     continue  # Skip empty batches (just in case)
-
+                
                 process_batch(batch_df, st.session_state.embedding_model, collection)
 
                 # Update progress dynamically for each batch
@@ -392,11 +410,18 @@ elif llm_choice == "Local (Ollama)":
         st.session_state.local_llms = localLLms
 
 
-st.sidebar.subheader("Information")
-st.sidebar.write("Collection name: {}".format(st.session_state.collection.name))
-st.sidebar.write("LLM model: {}".format(st.session_state.llm_name))
-st.sidebar.write("Local or APIs: {}".format(st.session_state.llm_type))
-                   
+st.sidebar.subheader("All configurations:")
+st.sidebar.markdown(f"1. Collection name: **{st.session_state.collection.name if st.session_state.collection else 'No collection'}**")
+st.sidebar.markdown(f"2. LLM model: **{st.session_state.llm_name if 'llm_name' in st.session_state else 'Not selected'}**")
+st.sidebar.markdown(f"3. Local or APIs: **{st.session_state.llm_type if 'llm_type' in st.session_state else 'Not specified'}**")
+st.sidebar.markdown(f"4. Language: **{st.session_state.language}**")
+st.sidebar.markdown(f"5. Embedding Model: **{st.session_state.embedding_model.__class__.__name__ if st.session_state.embedding_model else 'None'}**")
+st.sidebar.markdown(f"6. Chunk Size: **{st.session_state.chunk_size}**")
+st.sidebar.markdown(f"7. Number of Documents Retrieval: **{st.session_state.number_docs_retrieval}**")
+st.sidebar.markdown(f"8. Data Saved: **{'Yes' if st.session_state.data_saved_success else 'No'}**")
+st.sidebar.markdown(f"9. LLM API Key Set: **{'Yes' if st.session_state.get('llm_api_key') else 'No'}**")
+st.sidebar.markdown(f"10. Chunking Option: **{st.session_state.chunkOption}**")
+
 
 # Step 3: Setup LLMs (Gemini Only)
 header_i += 1
@@ -405,9 +430,12 @@ st.header(header_text_llm)
 
 search_option = st.radio(
     "Please select one of the options below.",
-    ["Keywords Search", "Vector Search", "Hyde Search"],
+    [
+        # "Keywords Search", 
+        "Vector Search", 
+        "Hyde Search"],
     captions = [
-        "Search using traditional keyword matching",
+        # "Search using traditional keyword matching",
         "Search using vector similarity",
         "Search using the HYDE algorithm"
     ],
@@ -455,7 +483,7 @@ if prompt := st.chat_input("What is up?"):
                         st.session_state.number_docs_retrieval
                     )
                     
-                    enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
+                    enhanced_prompt = """The prompt of the user is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
                 elif search_option == "Keywords Search":
                     metadatas, retrieved_data = keywords_search(
@@ -465,7 +493,7 @@ if prompt := st.chat_input("What is up?"):
                         st.session_state.number_docs_retrieval
                     )
 
-                    enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
+                    enhanced_prompt = """The prompt of the user is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
                 elif search_option == "Hyde Search":
               
@@ -485,7 +513,7 @@ if prompt := st.chat_input("What is up?"):
                         num_samples=1
                     )
 
-                    enhanced_prompt = """You are a good salesperson. The prompt of the customer is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
+                    enhanced_prompt = """The prompt of the user is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
                 
                 if metadatas:
@@ -498,23 +526,30 @@ if prompt := st.chat_input("What is up?"):
                  
                     st.sidebar.subheader("Retrieval data")
                     st.sidebar.dataframe(metadata_df)
+                    st.sidebar.subheader("Full prompt for LLM")
+                    st.sidebar.markdown(enhanced_prompt)
                 else:
                     st.sidebar.write("No metadata to display.")
 
                 if st.session_state.llm_type == ONLINE_LLM:
                     # Generate content using the selected LLM model
-                    response = st.session_state.llm_model.generate_content(enhanced_prompt)
+                    if "llm_model" in st.session_state and st.session_state.llm_model is not None:
+                        response = st.session_state.llm_model.generate_content(enhanced_prompt)
 
-                    # Display the extracted content in the Streamlit app
-                    st.markdown(response)
+                        # Display the extracted content in the Streamlit app
+                        st.markdown(response)
 
-                    # Update chat history
-                    st.session_state.chat_history.append({"role": ASSISTANT, "content": response})
+                        # Update chat history
+                        st.session_state.chat_history.append({"role": ASSISTANT, "content": response})
+                    else:
+                        st.warning("Please select a model to run.")
                 elif st.session_state.llm_type == LOCAL_LLM:
-
-                    response = st.session_state.local_llms.generate_content(enhanced_prompt)
-                    st.markdown(response)
-                    st.session_state.chat_history.append({"role": ASSISTANT, "content": response})
+                    if "local_llms" in st.session_state and st.session_state.local_llms is not None:
+                        response = st.session_state.local_llms.generate_content(enhanced_prompt)
+                        st.markdown(response)
+                        st.session_state.chat_history.append({"role": ASSISTANT, "content": response})
+                    else:
+                        st.warning("Please select a model to run.")
             else:
                 st.warning("Please select columns for the chatbot to answer from.")
         else:
