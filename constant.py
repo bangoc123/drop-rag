@@ -9,3 +9,4 @@ VIETNAMESE = "Vietnamese"
 VI = 'vi'
 USER = 'user'
 ASSISTANT = 'assistant'
+DEFAULT_LOCAL_LLM = 'hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF'
