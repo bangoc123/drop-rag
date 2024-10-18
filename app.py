@@ -17,7 +17,7 @@ import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 from components import notify
-from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI
+from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -32,7 +32,8 @@ def clear_session_state():
 
 
 # Initialize the page
-st.title("Drag and Drop RAG")
+st.header("Drag and Drop RAG")
+st.markdown("Design your own chatbot using the RAG system.")
 st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c8309756/private-files/678dadd0-603b-11ef-b0a7-998b84b38d43-ProtonX_logo_horizontally__1_.png")
 
 
@@ -52,18 +53,26 @@ if language_choice == ENGLISH:
     if st.session_state.language and st.session_state.language != EN:
         st.session_state.language = EN
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        st.session_state.embedding_model_name = 'all-MiniLM-L6-v2'
         st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
     else:
         st.session_state.language = EN
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
+        st.session_state.embedding_model_name = 'all-MiniLM-L6-v2'
+
 elif language_choice == VIETNAMESE:
     if st.session_state.language and st.session_state.language != VI:
         st.session_state.language = VI
         st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
         st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
+        st.session_state.embedding_model_name = 'keepitreal/vietnamese-sbert'
 
+if "llm_type" not in st.session_state:
+    st.session_state.llm_type = LOCAL_LLM
 
+if "llm_name" not in st.session_state:
+    st.session_state.llm_name = DEFAULT_LOCAL_LLM
 
 # Sidebar settings
 st.sidebar.header("Settings")
@@ -336,9 +345,8 @@ if st.session_state.data_saved_success:
 
 
 # Step 3: Define which columns LLMs should answer from
-columns_to_answer = None
 if uploaded_files:
-    columns_to_answer = st.multiselect(
+    st.session_state.columns_to_answer = st.multiselect(
         "Select one or more columns LLMs should answer from (multiple selections allowed):", 
         df.columns
     )
@@ -348,7 +356,11 @@ header_i += 1
 header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'llm_model' in st.session_state else "{}. Setup LLMs".format(header_i)
 st.header(header_text_llm)
 # Example user selection
-llm_choice = st.selectbox("Choose Model Source:", ["Online", "Local (Ollama)"])
+llm_choice = st.selectbox(
+        "Choose Model Source:", 
+        ["Online", "Local (Ollama)"],
+        index=1,
+    )
 
 if llm_choice == "Online":
     # Initialize a variable for tracking if the API key was entered successfully
@@ -444,6 +456,54 @@ search_option = st.radio(
     index=0
 )
 
+
+
+header_i += 1
+st.header("{}. Export Chatbot".format(header_i))
+if st.button("Export Chatbot"):
+    st.write("Exporting chatbot...")
+
+    # Save session state to a JSON file
+    def save_session_state(file_path="pages/session_state.json"):
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Required fields to export
+        required_fields = [
+            "random_collection_name", 
+            "number_docs_retrieval", 
+            "embedding_model_name", 
+            "llm_type", 
+            "llm_name",
+            "columns_to_answer",
+            "search_option"
+        ]
+
+        # Check if all required fields are present in session state
+        missing_fields = [field for field in required_fields if field not in st.session_state]
+        if missing_fields:
+            st.error(f"Missing required fields: {', '.join(missing_fields)}")
+            return
+
+        # Check if llm_type is 'local_llm'
+        if st.session_state["llm_type"] != "local_llm":
+            st.error("Only support exporting llms local.")
+            return
+        
+        # Filter session state to only include specified fields and serializable types
+        session_data = {
+            key: value for key, value in st.session_state.items() 
+            if key in required_fields and isinstance(value, (str, int, float, bool, list, dict))
+        }
+
+        # Save to JSON file
+        with open(file_path, "w") as file:
+            json.dump(session_data, file)
+        
+        st.success("Chatbot exported successfully!")
+
+    save_session_state()
+
 # Step 4: Interactive Chatbot
 header_i += 1
 st.header("{}. Interactive Chatbot".format(header_i))
@@ -460,7 +520,6 @@ for message in st.session_state.chat_history:
         st.markdown(message["content"])
 
 
-
 if prompt := st.chat_input("What is up?"):
     # Add user message to chat history
     st.session_state.chat_history.append({"role": USER, "content": prompt})
@@ -474,13 +533,13 @@ if prompt := st.chat_input("What is up?"):
         if st.session_state.collection is not None:
             # Combine retrieved data to enhance the prompt based on selected columns
             metadatas, retrieved_data = [], ""
-            if columns_to_answer:
+            if st.session_state.columns_to_answer:
                 if search_option == "Vector Search":
                     metadatas, retrieved_data = vector_search(
                         st.session_state.embedding_model, 
                         prompt, 
                         st.session_state.collection, 
-                        columns_to_answer,
+                        st.session_state.columns_to_answer,
                         st.session_state.number_docs_retrieval
                     )
                     
@@ -490,7 +549,7 @@ if prompt := st.chat_input("What is up?"):
                     metadatas, retrieved_data = keywords_search(
                         prompt,
                         st.session_state.collection,
-                        columns_to_answer,
+                        st.session_state.columns_to_answer,
                         st.session_state.number_docs_retrieval
                     )
 
@@ -509,7 +568,7 @@ if prompt := st.chat_input("What is up?"):
                         st.session_state.embedding_model,
                         prompt,
                         st.session_state.collection,
-                        columns_to_answer,
+                        st.session_state.columns_to_answer,
                         st.session_state.number_docs_retrieval,
                         num_samples=1
                     )
@@ -556,3 +615,6 @@ if prompt := st.chat_input("What is up?"):
         else:
             st.error("No collection found. Please upload data and save it first.")
 
+
+
+    

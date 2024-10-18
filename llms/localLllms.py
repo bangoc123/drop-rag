@@ -70,20 +70,31 @@ def has_amd_gpu():
     except FileNotFoundError:
         return False
 
-def remove_running_container(container_name):
+def remove_running_container(
+        container_name,
+        position_noti="content"
+    ):
     # Check if the container is running
     result = subprocess.run(["docker", "ps", "-q", "--filter", f"name={container_name}"], capture_output=True, text=True)
     if result.stdout.strip():  # Container is running
         os.system(f"docker rm -f {container_name}")
-        st.success(f"Removed the running container '{container_name}'.")
+        if position_noti == "content":
+            st.success(f"Removed the running container '{container_name}'.")
+        else:
+            st.sidebar.success(f"Removed the running container '{container_name}'.")
 
 # Function to run the Ollama container based on the hardware type
-def run_ollama_container():
+def run_ollama_container(
+        position_noti="content"
+    ):
     system = platform.system().lower()
     container_name = "ollama"
 
     # Remove the container if it's already running
-    remove_running_container(container_name)
+    remove_running_container(
+        container_name,
+        position_noti=position_noti
+    )
 
     if system == "linux" or system == "darwin":  # macOS or Linux
         if has_nvidia_gpu():
@@ -91,27 +102,44 @@ def run_ollama_container():
             install_nvidia_toolkit()  # Ensure NVIDIA toolkit is installed
             # Run Ollama container with NVIDIA GPU
             os.system(f"docker run -d --gpus=all -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
-            st.success("Ollama container running with NVIDIA GPU!")
+            if position_noti == "content":
+                st.success("Ollama container running with NVIDIA GPU!")
+            else:
+                st.sidebar.success("Ollama container running with NVIDIA GPU!")
         elif has_amd_gpu():
             st.info("AMD GPU detected. Starting Ollama with ROCm support...")
             # Run Ollama container with AMD GPU
             os.system(f"docker run -d --device /dev/kfd --device /dev/dri -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama:rocm")
-            st.success("Ollama container running with AMD GPU!")
+            if position_noti == "content":
+                st.success("Ollama container running with AMD GPU!")
+            else:
+                st.sidebar.success("Ollama container running with AMD GPU!")
         else:
-            st.info("No GPU detected. Starting Ollama with CPU-only support...")
+            if position_noti == "content":
+                st.info("No GPU detected. Starting Ollama with CPU-only support...")
+            else:
+                st.sidebar.info("No GPU detected. Starting Ollama with CPU-only support...")
             # Run Ollama container with CPU-only
             os.system(f"docker run -d -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
-            st.success("Ollama container running with CPU-only!")
+            
+            if position_noti == "content":
+                st.success("Ollama container running with CPU-only!")
+            else:
+                st.sidebar.success("Ollama container running with CPU-only!")
 
     elif system == "windows":
-        st.warning("Please download and install Docker Desktop for Windows and run the following command manually:")
+        if position_noti == "content":
+            st.warning("Please download and install Docker Desktop for Windows and run the following command manually:")
+        else:
+            st.sidebar.warning("Please download and install Docker Desktop for Windows and run the following command manually:")
         st.code(f"docker run -d -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
 
 
 class LocalLlms:
-    def __init__(self, model_name):
+    def __init__(self, model_name, position_noti="content"):
         self.model_name = model_name
         self.base_url = ollama_endpoint
+        self.position_noti = position_noti
         self.pull_model()
 
     def pull_model(self):
@@ -126,7 +154,10 @@ class LocalLlms:
             st.error(f"Failed to pull model {self.model_name}: {response.text}")
             raise Exception(f"Model pull failed: {response.text}")
 
-        st.info(f"Model {self.model_name} pulled successfully.")
+        if self.position_noti == "content":
+            st.success(f"Model {self.model_name} pulled successfully.")
+        else:
+            st.sidebar.success(f"Model {self.model_name} pulled successfully.")
 
     def chat(self, messages):
         """Send messages to the model and return the assistant's response."""
@@ -189,46 +220,28 @@ class LocalLlms:
         else:
             return ""
 
-def run_ollama_model(model_name="gemma2:2b"):
+def run_ollama_model(
+        model_name="gemma2:2b",
+        position_noti="content"
+    ):
     # Check if the Ollama server is running
     try:
         response = requests.get(ollama_endpoint)
         if response.status_code != 200:
-            st.error("Ollama server is not running. Please start the server first.")
+            if position_noti == "content":
+                st.error("Ollama server is not running. Please start the server first.")
+            else:
+                st.sidebar.error("Ollama server is not running. Please start the server first.")
             return None
     except requests.ConnectionError:
-        st.error("Ollama server is not reachable. Please check if it's running.")
+        if position_noti == "content":
+            st.error("Ollama server is not reachable. Please check if it's running.")
+        else:
+            st.sidebar.error("Ollama server is not reachable. Please check if it's running.")
         return None
 
     # Create and return an instance of LocalLlms
-    return LocalLlms(model_name)
-
-# Function to run the Ollama container based on the hardware type
-def run_ollama_container():
-    system = platform.system().lower()
-    container_name = "ollama"
-
-    # Remove the container if it's already running
-    remove_running_container(container_name)
-
-    if system == "linux" or system == "darwin":  # macOS or Linux
-        if has_nvidia_gpu():
-            st.info("NVIDIA GPU detected. Installing NVIDIA Container Toolkit if necessary...")
-            install_nvidia_toolkit()  # Ensure NVIDIA toolkit is installed
-            # Run Ollama container with NVIDIA GPU
-            os.system(f"docker run -d --gpus=all -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
-            st.success("Ollama container running with NVIDIA GPU!")
-        elif has_amd_gpu():
-            st.info("AMD GPU detected. Starting Ollama with ROCm support...")
-            # Run Ollama container with AMD GPU
-            os.system(f"docker run -d --device /dev/kfd --device /dev/dri -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama:rocm")
-            st.success("Ollama container running with AMD GPU!")
-        else:
-            st.info("No GPU detected. Starting Ollama with CPU-only support...")
-            # Run Ollama container with CPU-only
-            os.system(f"docker run -d -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
-            st.success("Ollama container running with CPU-only!")
-
-    elif system == "windows":
-        st.warning("Please download and install Docker Desktop for Windows and run the following command manually:")
-        st.code(f"docker run -d -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
+    return LocalLlms(
+        model_name,
+        position_noti=position_noti
+    )
