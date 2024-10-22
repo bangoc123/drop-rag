@@ -17,7 +17,12 @@ import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 from components import notify
-from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM
+from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM, OPENAI
+from graph_rag import GraphRAG
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import Document as langchainDocument
+from langchain_openai import ChatOpenAI
+
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -288,6 +293,10 @@ if uploaded_files is not None:
 
 
 
+
+
+
+
 # Button to save data
 if st.button("Save Data"):
     try:
@@ -344,6 +353,7 @@ if st.session_state.data_saved_success:
 
 
 
+
 # Step 3: Define which columns LLMs should answer from
 if uploaded_files:
     st.session_state.columns_to_answer = st.multiselect(
@@ -353,7 +363,7 @@ if uploaded_files:
 
 # Step 2: Setup LLMs (Gemini Only)
 header_i += 1
-header_text_llm = "{}. Setup LLMs ✅".format(header_i) if 'llm_model' in st.session_state else "{}. Setup LLMs".format(header_i)
+header_text_llm = "{}. Setup LLMs".format(header_i)
 st.header(header_text_llm)
 # Example user selection
 llm_choice = st.selectbox(
@@ -366,20 +376,38 @@ if llm_choice == "Online":
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
     st.session_state.llm_type = ONLINE_LLM
-    st.session_state.llm_name = GEMINI
-    # Input Gemini API key
+
+    if st.session_state.llm_type == ONLINE_LLM:
+        st.session_state.llm_name = st.selectbox(
+            "Select the LLM model to run", 
+            options=[GEMINI, OPENAI], 
+            index=0
+        )
+   
+    # Input API key
     st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
     st.text_input(
-        "Enter your Gemini API Key:", 
+        "Enter your API Key:", 
         type="password", 
-        key="llm_api_key")   
-    
-    if st.session_state.get('llm_api_key'):
+        key="llm_api_key") 
 
-        st.success("Gemini API Key saved successfully!")
-        st.session_state.llm_model = OnlineLLMs(
-            "gemini",
-            api_key=st.session_state.get('llm_api_key'))
+    if st.session_state.get('llm_api_key'):
+        st.success("API Key saved successfully!")
+        if st.session_state.llm_name == GEMINI:
+            st.session_state.llm_model = OnlineLLMs(
+                name=GEMINI,
+                api_key=st.session_state.get('llm_api_key'),
+                model_version="gemini-1.5-pro"
+                )
+        elif st.session_state.llm_name == OPENAI:
+            st.session_state.llm_model = OnlineLLMs(
+                name=OPENAI,
+                api_key=st.session_state.get('llm_api_key'),
+                model_version="gpt-4o"
+                )
+        else:
+            st.warning("Please select a model to run.")
+
         api_key_success = True
 
     # Show blue tick if API key was entered successfully
@@ -436,7 +464,42 @@ if st.session_state.get('chunkOption'):
     st.sidebar.markdown(f"10. Chunking Option: **{st.session_state.chunkOption}**")
 
 
-# Step 3: Setup LLMs (Gemini Only)
+header_i += 1
+header_text = "{}. [Experimental] Graph RAG".format(header_i)
+st.header(header_text)
+
+# Display graph
+if st.button("Extract Graph"):
+    if not st.session_state.get("llm_api_key"):
+        notify("You have to setup the API KEY FIRST in the Setup LLM Section", "error")
+    else:
+        if st.session_state.llm_type == ONLINE_LLM:
+            if st.session_state.llm_name == GEMINI:
+                llm_model = ChatGoogleGenerativeAI(
+                    model="gemini-1.5-pro",
+                    google_api_key=st.session_state.get("llm_api_key")
+                )
+            elif st.session_state.llm_name == OPENAI:
+
+                llm_model = ChatOpenAI(
+                    model="gpt-4o",
+                    openai_api_key=st.session_state.get("llm_api_key")
+                )
+                
+            rag = GraphRAG(
+                llm_model
+            )
+
+            langchain_documents = [
+                langchainDocument(page_content=chunk) 
+                for chunk in chunks_df['chunk'].tolist()]
+        
+            rag.create_graph(langchain_documents)
+            rag.visualize_graph()
+        else:
+            st.error("Only support online model for now.")
+    # st.graph(rag.graph)
+
 header_i += 1
 header_text_llm = "{}. Set up search algorithms".format(header_i)
 st.header(header_text_llm)

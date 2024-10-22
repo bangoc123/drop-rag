@@ -1,7 +1,7 @@
 streamlit==1.37.1
 sentence_transformers==3.0.1
 chromadb==0.5.11
-google-generativeai==0.6.0
+google-generativeai==0.8.0
 ipython==8.18.1
 pdfplumber==0.11.4
 python-docx==1.1.2
@@ -10,3 +10,11 @@ tiktoken==0.7.0
 nltk==3.8.1
 ollama==0.3.3
 python-dotenv==1.0.1
+langchain-experimental==0.3.2
+neo4j==5.25.0
+langchain-community==0.3.3
+langchain-google-genai==2.0.1
+networkx==3.4.2
+pyvis==0.3.2
+openai==1.52.0
+langchain_openai==0.2.3
