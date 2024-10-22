@@ -1,6 +1,7 @@
 NO_CHUNKING = "No Chunking"
 CHUNK = 'chunk'
 GEMINI = 'gemini'
+OPENAI = 'openai'
 ONLINE_LLM = 'online_llm'
 LOCAL_LLM = 'local_llm'
 EN = 'en'
