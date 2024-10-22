@@ -6,29 +6,30 @@
 
 [Watch Video Demo](https://www.youtube.com/watch?v=VjVHAfFvnQM&feature=youtu.be)
 
-This project implements a **Retrieval-Augmented Generation (RAG)** pipeline. It allows users to upload data files (CSV, JSON, PDF, DOCX), store their content in a **Chroma vector store**, and interact with it through a chatbot powered by **Gemini** or **local open-source models** like those available through **OLLAMA**. The chatbot retrieves relevant information from the uploaded files and uses **LLMs** (Large Language Models) to enhance user queries, returning meaningful responses.
+This project implements a **Retrieval-Augmented Generation (RAG)** pipeline, enabling users to upload various data files (CSV, JSON, PDF, DOCX), store their content in a **Chroma vector store**, and interact with it via a chatbot. The chatbot is powered by **Gemini**, **OpenAI**, or local models accessible through **OLLAMA**, retrieving relevant information and using **Large Language Models (LLMs)** to enhance responses based on user queries. Additionally, the app provides an **experimental Graph RAG** feature for visualizing data connections.
 
 ## Features
-1. **Upload CSV, JSON, PDF, or DOCX files** – Users can upload files in various formats and choose which columns or sections to index for vector search.
-2. **Store and retrieve vector embeddings** using **Chroma** – Automatically store embeddings from uploaded files and retrieve relevant content for queries.
-3. **Interactive chatbot** – Use the **Gemini API** or local models to generate contextually enhanced responses.
-4. **Customizable LLM options** – Choose between cloud-based **Gemini** or local LLMs, including **OLLAMA** and a range of open-source models.
-5. **Flexible chunking options** – Users can apply chunking strategies like **Recursive Token Chunking**, **Agentic Chunking**, or skip chunking altogether.
+1. **Flexible File Upload** – Supports uploading CSV, JSON, PDF, and DOCX files, allowing users to choose which columns or sections to index.
+2. **Chroma-based Storage and Retrieval** – Uses **Chroma** to store vector embeddings and perform efficient vector-based searches.
+3. **Interactive Chatbot** – Chatbot interaction is enhanced by **Gemini**, **OpenAI**, or local LLMs to generate context-aware responses.
+4. **Customizable LLM Choices** – Offers options between cloud-based **Gemini** and **OpenAI**, or local LLMs like **OLLAMA**, with support for various open-source models.
+5. **Dynamic Chunking Options** – Provides multiple chunking strategies: **Recursive Token Chunking**, **Agentic Chunking**, **Semantic Chunking**, or no chunking.
+6. **Graph RAG Visualization** – Experimental support for visualizing data relationships and connections using **Graph RAG**.
 
 ## Running the Application
 
-### 1. Clone the repository
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/bangoc123/drop-rag.git
 cd drop-rag
 ```
 
-### 2. Install the required packages
+### 2. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Streamlit app
+### 3. Run the Streamlit App
 ```bash
 streamlit run app.py
 ```
@@ -37,57 +38,68 @@ The app will be accessible at `http://localhost:8501`.
 
 ## Usage Instructions
 
-### 1. **Upload Data**
-Upload a CSV, JSON, PDF, or DOCX file. You can select which column(s) to index for vector-based searches. 
+### Step 1: Upload Data
+Upload a CSV, JSON, PDF, or DOCX file. You can specify which columns to index for vector-based search.
 
-### 2. **Embedding and Storage**
-The data is stored in the **Chroma vector store**, where vector embeddings are generated using models like `all-MiniLM-L6-v2` (for English) or `keepitreal/vietnamese-sbert` (for Vietnamese).
+### Step 2: Embedding and Storage
+The data is stored in **Chroma**, and embeddings are generated using models like `all-MiniLM-L6-v2` (for English) or `keepitreal/vietnamese-sbert` (for Vietnamese).
 
-### 3. **Choosing LLM**
-You can choose to use either:
-- **Gemini API**: Requires a **Gemini API key** to generate responses. Obtain the key [here](https://aistudio.google.com/app/apikey).
-- **Local LLMs via OLLAMA**: Use **OLLAMA** to run models such as `llama`, `gpt-j`, and other open-source models on your local machine.
+### Step 3: Choose LLM
+Select from:
+- **Gemini API** (requires a [Gemini API key](https://aistudio.google.com/app/apikey))
+- **OpenAI API** (requires an [OpenAI API key](https://platform.openai.com/account/api-keys))
+- **Local LLMs via OLLAMA**, supporting models like `llama`, `gpt-j`, and more.
 
-### OLLAMA Model Options
+### Step 4: Configure Chunking
+Select a chunking method to organize the content:
+- **No Chunking**: Use the entire document.
+- **Recursive Token Chunking**: Divide text based on token count.
+- **Semantic Chunking**: Group text semantically.
+- **Agentic Chunking**: Use an LLM to dynamically manage text chunks (requires Gemini API).
 
-Here’s a list of models available for use with **OLLAMA**, along with their corresponding identifiers:
+### Step 5: Interact with the Chatbot
+Start chatting with the bot, which will enhance responses using the retrieved content.
 
-| Model Name                            | Model Size        | OLLAMA Identifier       |
-|---------------------------------------|-------------------|-------------------------|
-| Llama 3.2 (3B - 2.0GB)                | 3B (2.0GB)        | `llama3.2`              |
-| Llama 3.2 (1B - 1.3GB)                | 1B (1.3GB)        | `llama3.2:1b`           |
-| Llama 3.1 (8B - 4.7GB)                | 8B (4.7GB)        | `llama3.1`              |
-| Llama 3.1 (70B - 40GB)                | 70B (40GB)        | `llama3.1:70b`          |
-| Llama 3.1 (405B - 231GB)              | 405B (231GB)      | `llama3.1:405b`         |
-| Phi 3 Mini (3.8B - 2.3GB)             | 3.8B (2.3GB)      | `phi3`                  |
-| Phi 3 Medium (14B - 7.9GB)            | 14B (7.9GB)       | `phi3:medium`           |
-| Gemma 2 (2B - 1.6GB)                  | 2B (1.6GB)        | `gemma2:2b`             |
-| Gemma 2 (9B - 5.5GB)                  | 9B (5.5GB)        | `gemma2`                |
-| Gemma 2 (27B - 16GB)                  | 27B (16GB)        | `gemma2:27b`            |
-| Mistral (7B - 4.1GB)                  | 7B (4.1GB)        | `mistral`               |
-| Moondream 2 (1.4B - 829MB)            | 1.4B (829MB)      | `moondream`             |
-| Neural Chat (7B - 4.1GB)              | 7B (4.1GB)        | `neural-chat`           |
-| Starling (7B - 4.1GB)                 | 7B (4.1GB)        | `starling-lm`           |
-| Code Llama (7B - 3.8GB)               | 7B (3.8GB)        | `codellama`             |
-| Llama 2 Uncensored (7B - 3.8GB)       | 7B (3.8GB)        | `llama2-uncensored`     |
-| LLaVA (7B - 4.5GB)                    | 7B (4.5GB)        | `llava`                 |
-| Solar (10.7B - 6.1GB)                 | 10.7B (6.1GB)     | `solar`                 |
+### Step 6: Graph RAG (Experimental)
+Use **Graph RAG** to visualize relationships and connections within the uploaded data:
+1. Ensure an online LLM is configured (Gemini or OpenAI).
+2. Click the "Extract Graph" button to generate and display the graph.
 
-### 4. **Chatbot Interaction**
-After uploading your data and selecting the LLM, start interacting with the chatbot, which will retrieve and augment responses based on the stored data.
+## Supported Models for OLLAMA
 
-### 5. **Chunking Options**
-Before querying the chatbot, users can choose from different chunking methods:
-- **No Chunking**: Use the full document without dividing it.
-- **Recursive Token Chunking**: Split documents into smaller sections based on token count.
-- **Semantic Chunking**: Group text by meaning, enhancing retrieval accuracy.
-- **Agentic Chunking**: Dynamically manage text chunks using an LLM-based agent.
+Here is a list of models supported by **OLLAMA**:
 
-## Notes
-- A **Gemini API key** is required if you opt for the **Gemini** model. 
-- For local model inference using **OLLAMA**, ensure **Docker** is installed to run the models locally.
+| Model Name                           | Size          | Identifier               |
+|--------------------------------------|---------------|--------------------------|
+| Llama 3.2 (3B)                       | 3B (2.0GB)    | `llama3.2`               |
+| Phi 3 Medium (14B)                   | 14B (7.9GB)   | `phi3:medium`            |
+| Code Llama (7B)                      | 7B (3.8GB)    | `codellama`              |
+| Mistral (7B)                         | 7B (4.1GB)    | `mistral`                |
+| ...                                  | ...           | ...                      |
+
+### Using GGUF Models
+High-performance GGUF models are supported. Refer to [Hugging Face](https://huggingface.co/models?library=gguf&sort=trending) for available models.
+
+## Advanced Options
+### Graph RAG
+Experimental support for **Graph RAG** allows the visualization of data connections. Requires an online LLM (Gemini or OpenAI).
+
+### Search Methods
+Choose from:
+- **Vector Search**: Based on vector similarity.
+- **Hyde Search**: Uses a generative model for improved search accuracy.
 
 ## Troubleshooting
+- **No Results?** Ensure you've indexed the correct columns and stored embeddings.
+- **API Issues?** Verify that your API key is valid (if using Gemini or OpenAI) and that your vector store is initialized.
 
-- If queries do not retrieve results, verify that you have selected the correct columns for indexing and that your embeddings are properly stored.
-- Ensure the API key is valid (if using Gemini) and that the vector store is initialized before using the chatbot.
+## Notes
+- **Gemini and OpenAI API Keys**: Required for cloud-based LLMs. Obtain keys from their respective platforms.
+- **Local Models**: Requires **Docker** for local model inference.
+
+## Exporting Chatbot Configuration
+The app allows exporting configuration data for local LLMs to JSON for easy deployment.
+
+## Clearing Session State
+Users can clear session state via a sidebar button to reset settings.
+

@@ -385,7 +385,11 @@ if llm_choice == "Online":
         )
    
     # Input API key
-    st.markdown("Obtain the API key from the [Google AI Studio](https://ai.google.dev/aistudio/).")
+    if st.session_state.llm_name == GEMINI:
+        st.markdown("Obtain the API key from the [Google AI Studio](https://aistudio.google.com/app/apikey).")
+    elif st.session_state.llm_name == OPENAI:
+        st.markdown("Obtain the API key from the [OpenAI API page](https://platform.openai.com/account/api-keys).")
+    
     st.text_input(
         "Enter your API Key:", 
         type="password", 
