@@ -8,6 +8,7 @@ EN = 'en'
 ENGLISH = "English"
 VIETNAMESE = "Vietnamese"
 VI = 'vi'
+NONE = 'none'
 USER = 'user'
 ASSISTANT = 'assistant'
 DEFAULT_LOCAL_LLM = 'hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF'

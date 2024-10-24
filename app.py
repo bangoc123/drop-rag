@@ -17,7 +17,7 @@ import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 from components import notify
-from constant import NO_CHUNKING, EN, VI, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM, OPENAI
+from constant import NO_CHUNKING, EN, VI, NONE, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM, OPENAI
 from graph_rag import GraphRAG
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import Document as langchainDocument
@@ -44,7 +44,7 @@ st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c
 
 # --- Initialize session state for language choice and model embedding
 if "language" not in st.session_state:
-    st.session_state.language = EN  # Default language is English
+    st.session_state.language = None  # Default language is English
 if "embedding_model" not in st.session_state:
     st.session_state.embedding_model = None  # Placeholder for the embedding model
 
@@ -68,30 +68,10 @@ if "search_option" not in st.session_state:
 
 # --- End of initialization
 
-# Language selection popup
-st.sidebar.subheader("Choose Language")
-language_choice = st.sidebar.radio("Select language:", [ENGLISH, VIETNAMESE])
 
-# Switch embedding model based on language choice
-if language_choice == ENGLISH:
-    if st.session_state.language and st.session_state.language != EN:
-        st.session_state.language = EN
-        st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        st.session_state.embedding_model_name = 'all-MiniLM-L6-v2'
-        st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
-    else:
-        st.session_state.language = EN
-        st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        st.sidebar.success("Using English embedding model: all-MiniLM-L6-v2")
-        st.session_state.embedding_model_name = 'all-MiniLM-L6-v2'
 
-elif language_choice == VIETNAMESE:
-    if st.session_state.language and st.session_state.language != VI:
-        st.session_state.language = VI
-        st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
-        st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
-        st.session_state.embedding_model_name = 'keepitreal/vietnamese-sbert'
-
+if "graph_query" not in st.session_state:
+    st.session_state.graph_query = """MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 100"""
 
 # Sidebar settings
 st.sidebar.header("Settings")
@@ -127,8 +107,43 @@ if st.session_state.collection is None:
     )
 
 
+header_i = 1
+# Language selection popup
+header_text = "{}. Setup Language".format(header_i)
+st.header(header_text)
+language_choice = st.radio(
+    "Select language:", [
+        NONE,
+        ENGLISH, 
+        VIETNAMESE
+    ],
+    index=0
+    )
+
+# Switch embedding model based on language choice
+if language_choice == ENGLISH:
+    if st.session_state.get("language") != EN:
+        st.session_state.language = EN
+        # Only load the model if it hasn't been loaded before
+        if st.session_state.get("embedding_model_name") != 'all-MiniLM-L6-v2':
+            st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            st.session_state.embedding_model_name = 'all-MiniLM-L6-v2'
+        st.success("Using English embedding model: all-MiniLM-L6-v2")
+
+elif language_choice == VIETNAMESE:
+    if st.session_state.get("language") != VI:
+        st.session_state.language = VI
+        # Only load the model if it hasn't been loaded before
+        if st.session_state.get("embedding_model_name") != 'keepitreal/vietnamese-sbert':
+            st.session_state.embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
+            st.session_state.embedding_model_name = 'keepitreal/vietnamese-sbert'
+        st.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
+
+
+
 # Step 1: File Upload (CSV, JSON, PDF, or DOCX) and Column Detection
-st.subheader("Upload data", divider=True)
+header_i += 1
+st.header(f"{header_i}. Upload data ", divider=True)
 uploaded_files = st.file_uploader(
     "Upload CSV, JSON, PDF, or DOCX files", 
     type=["csv", "json", "pdf", "docx"], 
@@ -297,9 +312,6 @@ if uploaded_files is not None:
 
 
 
-
-
-
 # Button to save data
 if st.button("Save Data"):
     try:
@@ -344,8 +356,9 @@ if st.button("Save Data"):
     except Exception as e:
         st.error(f"Error saving data to Chroma: {str(e)}")
 
-# Show blue tick if data has been saved successfully
-header_i = 1
+
+
+header_i += 1
 header_text = "{}. Setup data ✅".format(header_i) if st.session_state.data_saved_success else "{}. Setup data".format(header_i)
 st.header(header_text)
 
@@ -476,36 +489,48 @@ header_text = "{}. [Experimental] Graph RAG".format(header_i)
 st.header(header_text)
 
 # Display graph
+
+def update_graph_query():
+    st.session_state.graph_query = st.session_state.temp_graph_query
+
 if st.button("Extract Graph"):
     if not st.session_state.get("llm_api_key"):
         notify("You have to setup the API KEY FIRST in the Setup LLM Section", "error")
     else:
         if st.session_state.llm_type == ONLINE_LLM:
             if st.session_state.llm_name == GEMINI:
-                llm_model = ChatGoogleGenerativeAI(
+                llm_model_for_graph_rag = ChatGoogleGenerativeAI(
                     model="gemini-1.5-pro",
                     google_api_key=st.session_state.get("llm_api_key")
                 )
             elif st.session_state.llm_name == OPENAI:
 
-                llm_model = ChatOpenAI(
+                llm_model_for_graph_rag = ChatOpenAI(
                     model="gpt-4o",
                     openai_api_key=st.session_state.get("llm_api_key")
                 )
                 
-            rag = GraphRAG(
-                llm_model
-            )
+            st.session_state.graph_rag = GraphRAG(llm_model_for_graph_rag)
 
             langchain_documents = [
                 langchainDocument(page_content=chunk) 
                 for chunk in chunks_df['chunk'].tolist()]
-        
-            rag.create_graph(langchain_documents)
-            rag.visualize_graph()
+            
+            st.session_state.graph_rag.create_graph(langchain_documents)
         else:
-            st.error("Only support online model for now.")
-    # st.graph(rag.graph)
+            notify("Only support online model for now.", "error")
+
+if "graph_rag" in st.session_state and st.session_state.graph_rag is not None:
+    graph_query = st.text_area(
+        "Graph Query",
+        st.session_state.graph_query,
+        key="temp_graph_query",
+        on_change=update_graph_query
+    )
+
+    if st.button("Visualize Graph"):
+        data = st.session_state.graph_rag.query_graph(graph_query)
+        st.session_state.graph_rag.visualize_graph(data)
 
 header_i += 1
 header_text_llm = "{}. Set up search algorithms".format(header_i)
