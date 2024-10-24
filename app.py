@@ -42,12 +42,31 @@ st.markdown("Design your own chatbot using the RAG system.")
 st.logo("https://storage.googleapis.com/mle-courses-prod/users/61b6fa1ba83a7e37c8309756/private-files/678dadd0-603b-11ef-b0a7-998b84b38d43-ProtonX_logo_horizontally__1_.png")
 
 
-# Initialize session state for language choice and model embedding
+# --- Initialize session state for language choice and model embedding
 if "language" not in st.session_state:
     st.session_state.language = EN  # Default language is English
 if "embedding_model" not in st.session_state:
     st.session_state.embedding_model = None  # Placeholder for the embedding model
 
+if "llm_type" not in st.session_state:
+    st.session_state.llm_type = LOCAL_LLM
+
+if "llm_name" not in st.session_state:
+    st.session_state.llm_name = DEFAULT_LOCAL_LLM
+
+if "llm_model" not in st.session_state:
+    st.session_state.llm_model = None
+
+if "client" not in st.session_state:
+    st.session_state.client = chromadb.PersistentClient("db")
+
+if "collection" not in st.session_state:
+    st.session_state.collection = None
+
+if "search_option" not in st.session_state:
+    st.session_state.search_option = "Vector Search"
+
+# --- End of initialization
 
 # Language selection popup
 st.sidebar.subheader("Choose Language")
@@ -73,11 +92,6 @@ elif language_choice == VIETNAMESE:
         st.sidebar.success("Using Vietnamese embedding model: keepitreal/vietnamese-sbert")
         st.session_state.embedding_model_name = 'keepitreal/vietnamese-sbert'
 
-if "llm_type" not in st.session_state:
-    st.session_state.llm_type = LOCAL_LLM
-
-if "llm_name" not in st.session_state:
-    st.session_state.llm_name = DEFAULT_LOCAL_LLM
 
 # Sidebar settings
 st.sidebar.header("Settings")
@@ -101,17 +115,6 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
     help="Set the number of document which will be retrieved."
 )
 
-
-if "llm_model" not in st.session_state:
-    st.session_state.llm_model = None
-
-# Initialize session state for chroma client, collection, and model
-if "client" not in st.session_state:
-    st.session_state.client = chromadb.PersistentClient("db")
-
-# Initialize session state for collection and model
-if "collection" not in st.session_state:
-    st.session_state.collection = None
 
 
 
@@ -508,7 +511,7 @@ header_i += 1
 header_text_llm = "{}. Set up search algorithms".format(header_i)
 st.header(header_text_llm)
 
-search_option = st.radio(
+st.radio(
     "Please select one of the options below.",
     [
         # "Keywords Search", 
@@ -520,9 +523,8 @@ search_option = st.radio(
         "Search using the HYDE algorithm"
     ],
     key="search_option",
-    index=0
+    index=0,
 )
-
 
 
 header_i += 1
@@ -601,7 +603,7 @@ if prompt := st.chat_input("What is up?"):
             # Combine retrieved data to enhance the prompt based on selected columns
             metadatas, retrieved_data = [], ""
             if st.session_state.columns_to_answer:
-                if search_option == "Vector Search":
+                if st.session_state.search_option == "Vector Search":
                     metadatas, retrieved_data = vector_search(
                         st.session_state.embedding_model, 
                         prompt, 
@@ -612,7 +614,7 @@ if prompt := st.chat_input("What is up?"):
                     
                     enhanced_prompt = """The prompt of the user is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
-                elif search_option == "Keywords Search":
+                elif st.session_state.search_option == "Keywords Search":
                     metadatas, retrieved_data = keywords_search(
                         prompt,
                         st.session_state.collection,
@@ -622,7 +624,7 @@ if prompt := st.chat_input("What is up?"):
 
                     enhanced_prompt = """The prompt of the user is: "{}". Answer it based on the following retrieved data: \n{}""".format(prompt, retrieved_data)
 
-                elif search_option == "Hyde Search":
+                elif st.session_state.search_option == "Hyde Search":
               
                     if st.session_state.llm_type == ONLINE_LLM:
                         model = st.session_state.llm_model
