@@ -30,7 +30,17 @@ def list_collection(session_state, load_func, delete_func):
         ]
 
         # Convert to DataFrame
-        df = pd.DataFrame(collection_data)
+        df = pd.DataFrame(collection_data, columns=["Collection Name", "Metadata", "Action"])
+
+
+        head_col1, head_col2, head_col3 = st.columns([2, 2, 2])
+        with head_col1:
+            st.write("**Collection Name**")
+        with head_col2:
+            st.write("**Metadata**")
+        with head_col3:
+            st.write("**Action**")
+        st.markdown("---")
 
         for index, row in df.iterrows():
             col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
