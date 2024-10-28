@@ -5,6 +5,7 @@ import tiktoken
 import platform
 import streamlit as st
 import requests
+import re
 
 
 def process_batch(batch_df, model, collection):
@@ -28,6 +29,8 @@ def process_batch(batch_df, model, collection):
 
 
     except Exception as e:
+        if str(e) == "'NoneType' object has no attribute 'encode'":
+            raise RuntimeError("Please set up the language model at section #1 before running the processing.")
         raise RuntimeError(f"Error saving data to Chroma for a batch: {str(e)}")
 
     
@@ -47,6 +50,16 @@ def openai_token_count(string: str) -> int:
     num_tokens = len(encoding.encode(string, disallowed_special=()))
     return num_tokens
 
+
+def clean_collection_name(name):
+    # Clean the name based on the required pattern
+    # Allow only alphanumeric, underscores, hyphens, and single periods in between
+    cleaned_name = re.sub(r'[^a-zA-Z0-9_.-]', '', name)   # Step 1: Remove invalid characters
+    cleaned_name = re.sub(r'\.{2,}', '.', cleaned_name)    # Step 2: Remove consecutive periods
+    cleaned_name = re.sub(r'^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$', '', cleaned_name)  # Step 3: Remove leading/trailing non-alphanumeric characters
+
+    # Ensure the cleaned name meets length constraints
+    return cleaned_name[:63] if 3 <= len(cleaned_name) <= 63 else None
 
 
 
