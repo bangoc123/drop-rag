@@ -80,6 +80,12 @@ if "chunks_df" not in st.session_state:
 if "random_collection_name" not in st.session_state:
     st.session_state.random_collection_name = None
 
+if "chunk_size" not in st.session_state:
+    st.session_state.chunk_size = 200
+
+if "chunk_overlap" not in st.session_state:
+    st.session_state.chunk_overlap = 10
+
 # --- End of initialization
 
 
@@ -92,12 +98,23 @@ st.sidebar.header("Settings")
 # Chunk size input
 st.session_state.chunk_size = st.sidebar.number_input(
     "Chunk Size",
-    min_value=50, 
+    min_value=10, 
     max_value=1000, 
     value=200, 
-    step=50, 
-    help="Set the size of each chunk in terms of tokens."
+    step=10, 
+    help="Set the size of each chunk in terms of tokens.",
+
 )
+st.session_state.chunk_overlap = st.sidebar.number_input(
+    "Chunk Overlap",
+    min_value=0, 
+    max_value=1000, 
+    step=10, 
+    value=st.session_state.chunk_size // 10,
+    help="Set the size of each chunk in terms of tokens.",
+
+)
+
 
 st.session_state.number_docs_retrieval = st.sidebar.number_input(
     "Number of documnents retrieval", 
@@ -269,6 +286,9 @@ if uploaded_files is not None:
             )
         chunk_records = []
 
+        print('--going here', chunkOption)
+
+
         # Iterate over rows in the original DataFrame
         for index, row in df.iterrows():
 
@@ -285,7 +305,9 @@ if uploaded_files is not None:
             # For "RecursiveTokenChunker" option, split text from the selected index column into smaller chunks
             elif chunkOption == "RecursiveTokenChunker":
                 chunker = RecursiveTokenChunker(
-                    chunk_size=200
+                    chunk_size=st.session_state.chunk_size,
+                    chunk_overlap=st.session_state.chunk_overlap
+
                 )
                 chunks = chunker.split_text(selected_column_value)
                 

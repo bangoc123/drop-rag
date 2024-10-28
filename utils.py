@@ -29,6 +29,8 @@ def process_batch(batch_df, model, collection):
 
 
     except Exception as e:
+        if str(e) == "'NoneType' object has no attribute 'encode'":
+            raise RuntimeError("Please set up the language model at section #1 before running the processing.")
         raise RuntimeError(f"Error saving data to Chroma for a batch: {str(e)}")
 
     
