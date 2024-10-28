@@ -11,7 +11,25 @@ from networkx import Graph
 from pyvis.network import Network
 from streamlit import components
 import traceback
-# from prompt import prompt_to_extract_entities_and_relationships
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel, Field
+import json
+import os
+from dotenv import load_dotenv
+from langchain.graphs import Neo4jGraph
+from openai import OpenAI
+
+# Define the output schema for structured output
+class EntityRelationship(BaseModel):
+    entity_types: dict = Field(description="Defines various types of entities related to products.")
+    relation_types: dict = Field(description="Defines the types of relationships that can exist between entities.")
+    entity_relationship_match: dict = Field(description="Maps entity types to corresponding relationship types.")
+
+# Define the output parser
+output_parser = JsonOutputParser(
+    pydantic_object=EntityRelationship
+)
 
 
 
@@ -38,7 +56,6 @@ def graph_documents_to_string(graph_documents):
     result = []
     for doc in graph_documents:
         doc_str = graph_document_to_string(doc)
-        print('---', doc_str)
         result.append(doc_str)
     return ', '.join(result)
 
@@ -52,8 +69,7 @@ class GraphRAG:
         neo4j_uri = os.getenv("NEO4J_URI") or "bolt://localhost:7687"
         self.neo4j_username = os.getenv("NEO4J_USERNAME") or "neo4j"
         self.neo4j_password = os.getenv("NEO4J_PASSWORD") or "your_password"
-
-        print('------------------', neo4j_uri, self.neo4j_username, self.neo4j_password)
+        self.graph_documents = []
 
         self.check_and_start_neo4j()
         # Initialize the Neo4j graph
@@ -65,32 +81,38 @@ class GraphRAG:
 
         self.llms = llms
 
-    def extract_entities_and_relationships(self, graph_documents):
-        entities = []
-        relationships = []
+    def extract_entities_and_relationships(self):
+        entities = set()
+        relationships = set()
+        entity_relationship_matches = {}
 
-        for graph_doc in graph_documents:
-            # Extract nodes dynamically based on available keys
-            for node in graph_doc.nodes:
-                node_data = {'id': node.id, 'type': node.type}
-                # Add all properties from the node if they exist
-                if node.properties:
-                    node_data.update(node.properties)
-                entities.append(node_data)
+        # Extract entities and relationships by type
+        for doc in self.graph_documents:
+            # Extract entity types
+            for node in doc.nodes:
+                entities.add(node.type)
+            
+            # Extract relationships
+            for rel in doc.relationships:
+                relationships.add(rel.type)
+                
+                # Map entity type to relationship
+                if rel.source.type not in entity_relationship_matches:
+                    entity_relationship_matches[rel.source.type] = set()
+                entity_relationship_matches[rel.source.type].add(rel.type)
+        
+        # Convert sets to lists for final output
+        entities_list = list(entities)
+        relationships_list = list(relationships)
+        # Convert sets in entity_relationship_matches to lists
+        entity_relationship_match_dict = {entity: list(rels) for entity, rels in entity_relationship_matches.items()}
+        
+        # print('-----entities_list', entities_list)
+        # print('-----relationships_list', relationships_list)
+        # print('-----entity_relationship_match_dict', entity_relationship_match_dict)
 
-            # Extract relationships dynamically
-            for relationship in graph_doc.relationships:
-                rel_data = {
-                    'source': relationship.source.id,
-                    'target': relationship.target.id,
-                    'type': relationship.type
-                }
-                # Add all properties from the relationship if they exist
-                if relationship.properties:
-                    rel_data.update(relationship.properties)
-                relationships.append(rel_data)
+        return entities_list, relationships_list, entity_relationship_match_dict
 
-        return entities, relationships
 
     def check_and_start_neo4j(self):
         try:
@@ -148,6 +170,8 @@ class GraphRAG:
                 if result.returncode == 0:
                     local_ui = os.getenv("NEO4J_LOCAL_UI") or "http://localhost:7474"
                     st.success("Neo4j is ready. Check the Neo4j browser at [here]({}).".format(local_ui))
+                    st.markdown("Username: {}".format(os.getenv("NEO4J_USERNAME")))
+                    st.text_input("Password", value=os.getenv("NEO4J_PASSWORD"), type="password")
                     return
                 else:
                     st.warning(f"Neo4j is not ready yet. Retrying in {delay} seconds...")
@@ -160,75 +184,11 @@ class GraphRAG:
     def create_graph(self, docs):
         try:
             # st.info('Converting documents to graph format.')
-            graph_documents = LLMGraphTransformer(self.llms).convert_to_graph_documents(docs)
+            self.graph_documents = LLMGraphTransformer(self.llms).convert_to_graph_documents(docs)
             st.success('Documents converted to graph format successfully.')
 
-            print('graph_documents', graph_documents)
-
-            # graph_documents_str = graph_documents_to_string(graph_documents)
-
-            # print("&&&graph_documents_str", graph_documents_str)
-
-            # prompt_to_extract_entities_and_relationships = """
-            #     From the array:
-            #     {}
-
-            #     Extract three variables as follows:
-
-            #     entity_types = {{
-            #         "product": "Item detailed type, such as 'iPhone 11', 'Moto G Stylus 2023'.",
-            #         "brand": "The brand associated with the product, for example 'Apple', 'Cricket Wireless'.",
-            #         "specification": "Product specifications like '64GB', '4GB RAM', '8MP FF Camera'.",
-            #         "color": "The color of the product, for example 'Black', 'Blue'.",
-            #         "product_type": "General category or type of the product, such as 'Prepaid Smartphone'.",
-            #         "organization": "Company or organization related to the product, like 'AT&T' or 'Apple'."
-            #     }}
-
-            #     relation_types = {{
-            #         "produces": "Organization produces the product.",
-            #         "features": "Product has certain features or specifications.",
-            #         "color": "Product is of a certain color.",
-            #         "sells": "Organization sells the product.",
-            #         "brand": "The brand associated with the product.",
-            #         "has_specification": "Product has a particular specification.",
-            #         "is_a": "Product belongs to a general product type."
-            #     }}
-
-            #     entity_relationship_match = {{
-            #         "organization": "produces",
-            #         "product": "features",
-            #         "color": "color",
-            #         "brand": "brand",
-            #         "specification": "has_specification",
-            #         "product_type": "is_a"
-            #     }} 
-
-            #     Output Format: Return only three variables in an Python array. No wrapped in markdown. No further explanation.
-            #     """.format(str(graph_documents_str))
-
-
-
-
-            # entities_and_relationships = self.llms.invoke(
-            #     prompt_to_extract_entities_and_relationships,
-            # )
-
-            # print('===entities_and_relationships', entities_and_relationships.content)
-
-            # parsed_globals = {}
-            # exec(entities_and_relationships.content, parsed_globals)
-
-            # entity_types = parsed_globals['entity_types']
-            # relation_types = parsed_globals['relation_types']
-            # entity_relationship_match = parsed_globals['entity_relationship_match']
-
-
-            # print('--entity_types', entity_types)
-            # print('--relation_types', relation_types)
-            # print('--entity_relationship_match', entity_relationship_match)
-
             self.graph.add_graph_documents(
-                graph_documents,
+                self.graph_documents,
                 baseEntityLabel=True,
                 include_source=True
             )

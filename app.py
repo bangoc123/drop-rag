@@ -8,7 +8,7 @@ import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
 from chunking import RecursiveTokenChunker, LLMAgenticChunker, ProtonxSemanticChunker
-from utils import process_batch, divide_dataframe
+from utils import process_batch, divide_dataframe, clean_collection_name
 from search import vector_search, keywords_search, hyde_search
 from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS, GGUF_MODEL_OPTIONS
 from llms.onlinellms import OnlineLLMs
@@ -17,12 +17,14 @@ import pdfplumber  # PDF extraction
 import io
 from docx import Document  # DOCX extraction
 from components import notify
-from constant import NO_CHUNKING, EN, VI, NONE, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM, OPENAI
+from constant import NO_CHUNKING, EN, VI, NONE, USER, ASSISTANT, ENGLISH, VIETNAMESE, ONLINE_LLM, LOCAL_LLM, GEMINI, DEFAULT_LOCAL_LLM, OPENAI, DB
 from graph_rag import GraphRAG
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import Document as langchainDocument
 from langchain_openai import ChatOpenAI
-
+from collection_management import list_collection
+from dotenv import load_dotenv
+load_dotenv()
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -66,8 +68,19 @@ if "collection" not in st.session_state:
 if "search_option" not in st.session_state:
     st.session_state.search_option = "Vector Search"
 
-# --- End of initialization
+if "open_dialog" not in st.session_state:
+    st.session_state.open_dialog = None
 
+if "source_data" not in st.session_state:
+    st.session_state.source_data = "UPLOAD"
+
+if "chunks_df" not in st.session_state:
+    st.session_state.chunks_df = pd.DataFrame()
+
+if "random_collection_name" not in st.session_state:
+    st.session_state.random_collection_name = None
+
+# --- End of initialization
 
 
 if "graph_query" not in st.session_state:
@@ -94,18 +107,6 @@ st.session_state.number_docs_retrieval = st.sidebar.number_input(
     step=1,
     help="Set the number of document which will be retrieved."
 )
-
-
-
-
-# Check if the collection exists, if not, create a new one
-if st.session_state.collection is None:
-    st.session_state.random_collection_name = f"rag_collection_{uuid.uuid4().hex[:8]}"
-    st.session_state.collection = st.session_state.client.get_or_create_collection(
-        name=st.session_state.random_collection_name,
-        metadata={"description": "A collection for RAG system"},
-    )
-
 
 header_i = 1
 # Language selection popup
@@ -142,11 +143,13 @@ elif language_choice == VIETNAMESE:
 
 
 # Step 1: File Upload (CSV, JSON, PDF, or DOCX) and Column Detection
+
 header_i += 1
-st.header(f"{header_i}. Upload data ", divider=True)
+st.header(f"{header_i}. Setup data source")
+st.subheader(f"{header_i}.1. Upload data ", divider=True)
 uploaded_files = st.file_uploader(
     "Upload CSV, JSON, PDF, or DOCX files", 
-    type=["csv", "json", "pdf", "docx"], 
+    # type=["csv", "json", "pdf", "docx"], 
     accept_multiple_files=True
 )
 
@@ -158,6 +161,7 @@ if uploaded_files is not None:
     all_data = []
     
     for uploaded_file in uploaded_files:
+        print(uploaded_file.type)
         # Determine file type and read accordingly
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
@@ -187,6 +191,19 @@ if uploaded_files is not None:
             # Convert DOCX text into a DataFrame (assuming one column for simplicity)
             df = pd.DataFrame({"content": docx_text})
             all_data.append(df)
+        elif uploaded_file.name.endswith(".xlsx") or uploaded_file.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+            # Read Excel file
+            try:
+                df = pd.read_excel(
+                    uploaded_file,
+                    engine="openpyxl"
+                    )
+                all_data.append(df)
+            except Exception as e:
+                st.error(f"Error reading file: {str(e)}")
+        else:
+            st.error("Unsupported file format.")
+
 
     # Concatenate all data into a single DataFrame
     if all_data:
@@ -303,25 +320,38 @@ if uploaded_files is not None:
                 chunk_records.append(chunk_record)
 
         # Convert the list of dictionaries to a DataFrame
-        chunks_df = pd.DataFrame(chunk_records)
-
-        # Display the result
-        st.write("Number of chunks:", len(chunks_df))
-        st.dataframe(chunks_df)
+        st.session_state.chunks_df = pd.DataFrame(chunk_records)
 
 
 
+if "chunks_df" in st.session_state and len(st.session_state.chunks_df) > 0:
+    # Display the result
+    st.write("Number of chunks:", len(st.session_state.chunks_df))
+    st.dataframe(st.session_state.chunks_df)
 
 # Button to save data
 if st.button("Save Data"):
     try:
-        collection = st.session_state.collection
+        # Check if the collection exists, if not, create a new one
+        if st.session_state.collection is None:
+            if uploaded_files:
+                first_file_name = os.path.splitext(uploaded_files[0].name)[0]  # Get file name without extension
+                collection_name = f"rag_collection_{clean_collection_name(first_file_name)}"
+            else:
+                # If no file name is available, generate a random collection name
+                collection_name = f"rag_collection_{uuid.uuid4().hex[:8]}"
+        
+            st.session_state.random_collection_name = collection_name
+            st.session_state.collection = st.session_state.client.get_or_create_collection(
+                name=st.session_state.random_collection_name,
+                metadata={"description": "A collection for RAG system"},
+            )
 
         # Define the batch size
         batch_size = 256
 
         # Split the DataFrame into smaller batches
-        df_batches = divide_dataframe(chunks_df, batch_size)
+        df_batches = divide_dataframe(st.session_state.chunks_df, batch_size)
 
         # Check if the dataframe has data, otherwise show a warning and skip the processing
         if not df_batches:
@@ -338,7 +368,7 @@ if st.button("Save Data"):
                 if batch_df.empty:
                     continue  # Skip empty batches (just in case)
                 
-                process_batch(batch_df, st.session_state.embedding_model, collection)
+                process_batch(batch_df, st.session_state.embedding_model, st.session_state.collection)
 
                 # Update progress dynamically for each batch
                 progress_percentage = int(((i + 1) / num_batches) * 100)
@@ -356,13 +386,40 @@ if st.button("Save Data"):
     except Exception as e:
         st.error(f"Error saving data to Chroma: {str(e)}")
 
+# Set up the interface
+st.subheader(f"{header_i}.2. Or load from saved collection")
+if st.button("Load from saved collection"):
+    st.session_state.open_dialog = "LIST_COLLECTION"
+    def load_func(collection_name):
+        st.session_state.collection = st.session_state.client.get_collection(
+            name=collection_name
+        )
+        st.session_state.random_collection_name = collection_name
+        st.session_state.data_saved_success = True
+        st.session_state.source_data = DB
+        data = st.session_state.collection.get(
+            include=[
+                "documents", 
+                "metadatas"
+            ],
+        )
+        metadatas = data["metadatas"]
+        column_names = []
+        if len(metadatas) > 0 and len(metadatas[0].keys()) > 0:
+            column_names.extend(metadatas[0].keys())
+            column_names = list(set(column_names))
 
+        st.session_state.chunks_df = pd.DataFrame(metadatas, columns=column_names)
+
+    def delete_func(collection_name):
+        st.session_state.client.delete_collection(name=collection_name)
+    
+    list_collection(st.session_state, load_func, delete_func)
+        
 
 header_i += 1
 header_text = "{}. Setup data ✅".format(header_i) if st.session_state.data_saved_success else "{}. Setup data".format(header_i)
 st.header(header_text)
-
-
 
 if st.session_state.data_saved_success:
     st.markdown("✅ **Data Saved Successfully!**")
@@ -371,10 +428,10 @@ if st.session_state.data_saved_success:
 
 
 # Step 3: Define which columns LLMs should answer from
-if uploaded_files:
+if "random_collection_name" in st.session_state and st.session_state.random_collection_name is not None and st.session_state.chunks_df is not None:
     st.session_state.columns_to_answer = st.multiselect(
         "Select one or more columns LLMs should answer from (multiple selections allowed):", 
-        df.columns
+        st.session_state.chunks_df.columns
     )
 
 # Step 2: Setup LLMs (Gemini Only)
@@ -409,8 +466,9 @@ if llm_choice == "Online":
     st.text_input(
         "Enter your API Key:", 
         type="password", 
-        key="llm_api_key") 
-
+        key="llm_api_key",
+        value=os.getenv("GEMINI_API_KEY") if st.session_state.llm_name == GEMINI else os.getenv("OPENAI_API_KEY"),
+    ) 
     if st.session_state.get('llm_api_key'):
         st.success("API Key saved successfully!")
         if st.session_state.llm_name == GEMINI:
@@ -423,7 +481,7 @@ if llm_choice == "Online":
             st.session_state.llm_model = OnlineLLMs(
                 name=OPENAI,
                 api_key=st.session_state.get('llm_api_key'),
-                model_version="gpt-4o"
+                model_version="gpt-4o",
                 )
         else:
             st.warning("Please select a model to run.")
@@ -513,10 +571,18 @@ if st.button("Extract Graph"):
             st.session_state.graph_rag = GraphRAG(llm_model_for_graph_rag)
 
             langchain_documents = [
-                langchainDocument(page_content=chunk) 
-                for chunk in chunks_df['chunk'].tolist()]
+                langchainDocument(
+                    page_content=
+                    (
+                        f"{row['chunk']}"
+                    )
+                ) 
+                for _, row in st.session_state.chunks_df.iterrows()
+            ]
             
             st.session_state.graph_rag.create_graph(langchain_documents)
+
+            # e_r = st.session_state.graph_rag.extract_entities_and_relationships()
         else:
             notify("Only support online model for now.", "error")
 
