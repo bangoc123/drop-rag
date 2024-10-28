@@ -409,7 +409,7 @@ if st.button("Save Data"):
         st.error(f"Error saving data to Chroma: {str(e)}")
 
 # Set up the interface
-st.subheader(f"{header_i}.2. Or load from saved collection")
+st.subheader(f"{header_i}.2. Or load from saved collection", divider=True)
 if st.button("Load from saved collection"):
     st.session_state.open_dialog = "LIST_COLLECTION"
     def load_func(collection_name):
