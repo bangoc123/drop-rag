@@ -177,7 +177,10 @@ uploaded_files = st.file_uploader(
 # Initialize a variable for tracking the success of saving the data
 st.session_state.data_saved_success = False
 
-# Ensure `df` is only accessed if it's been created and has columns
+
+
+
+
 if uploaded_files is not None:
     all_data = []
     
@@ -224,6 +227,7 @@ if uploaded_files is not None:
                 st.error(f"Error reading file: {str(e)}")
         else:
             st.error("Unsupported file format.")
+
 
 
     # Concatenate all data into a single DataFrame
@@ -275,7 +279,7 @@ if uploaded_files is not None:
                 "Keep the original document",
                 "Recursively chunks text into smaller, meaningful token groups based on specific rules or criteria.",
                 "Chunking with semantic comparison between chunks",
-                "Let LLM decide chunking (requires Gemini API)"
+                "Let LLM decide chunking"
             ],
             key="chunkOption",
             index=currentChunkerIdx
@@ -290,7 +294,11 @@ if uploaded_files is not None:
             )
         chunk_records = []
 
-        print('--going here', chunkOption)
+        if chunkOption == "AgenticChunker":
+            if st.session_state.get("llm_choice") == llm_options["Online"] and not st.session_state.get("llm_api_key"):
+                st.warning("You have to setup the llm first in LLM Section")
+            elif st.session_state.get("llm_choice") == llm_options["Local (Ollama)"] and not st.session_state.get("local_llms"):
+                st.warning("You have to setup the llm first in LLM Section")
 
 
         # Iterate over rows in the original DataFrame
