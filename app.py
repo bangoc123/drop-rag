@@ -265,7 +265,7 @@ if uploaded_files is not None:
         if st.session_state.get("llm_choice") == llm_options["Online"] and not st.session_state.get("llm_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
             currentChunkerIdx = 0
             st.session_state.chunkOption = NO_CHUNKING
-            notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section for using Online Agentic Chunker", "error")
+            # notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section for using Online Agentic Chunker", "error")
         elif not st.session_state.get("chunkOption"):
             currentChunkerIdx = 0
             st.session_state.chunkOption = NO_CHUNKING
@@ -296,9 +296,9 @@ if uploaded_files is not None:
 
         if chunkOption == "AgenticChunker":
             if st.session_state.get("llm_choice") == llm_options["Online"] and not st.session_state.get("llm_api_key"):
-                st.warning("You have to setup the llm first in LLM Section")
-            elif st.session_state.get("llm_choice") == llm_options["Local (Ollama)"] and not st.session_state.get("local_llms"):
-                st.warning("You have to setup the llm first in LLM Section")
+                st.warning("You have to setup the LLMs first in LLM Section")
+            elif st.session_state.get("llm_choice") == llm_options["Local (Ollama)" ]:
+                st.warning("We only support Online LLM for now. Please select Online LLM in the LLM Section.")
 
 
         # Iterate over rows in the original DataFrame
@@ -340,8 +340,6 @@ if uploaded_files is not None:
             elif chunkOption == "AgenticChunker" and st.session_state.get("llm_choice") == llm_options["Local (Ollama)"] and st.session_state.get("local_llms"):
                 chunker = LLMAgenticChunkerv2(st.session_state.get("local_llms"))
                 chunks = chunker.split_text(selected_column_value)
-            elif chunkOption == "AgenticChunker" and st.session_state.get("llm_choice") == llm_options["Local (Ollama)"]:
-                pass
             # For each chunk, add a dictionary with the chunk and original_id to the list
             for chunk in chunks:
                 chunk_record = {**row.to_dict(), 'chunk': chunk}
