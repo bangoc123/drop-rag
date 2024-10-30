@@ -218,8 +218,6 @@ class LocalLlms(LLM):
             print(f"Error occurred: {e}, retrying...")
             raise e
         
-    def create_agentic_chunker_message(self, system_prompt, messages, max_tokens=1000, temperature=1):
-        return super().create_agentic_chunker_message(system_prompt, messages, max_tokens, temperature)
         
     def generate_content(self, prompt):
         data = {
