@@ -7,6 +7,7 @@ from chunking import RecursiveTokenChunker
 from utils import openai_token_count
 from llms.base import LLM
 
+
 class LLMAgenticChunkerv2(BaseChunker):
     def __init__(self, llm: LLM):
         self.client = llm
@@ -68,11 +69,9 @@ class LLMAgenticChunkerv2(BaseChunker):
                         break
 
                 messages = self.get_prompt(chunked_input, current_chunk)
-                print(messages, "CHECK")
                 while True:
                     result_string = self.client.create_agentic_chunker_message(messages[0]['content'], messages[1:], max_tokens=200, temperature=0.2)
                     # Use regular expression to find all numbers in the string
-                    print("RESPONSE", result_string)
                     split_after_line = [line for line in result_string.split('\n') if 'split_after:' in line][0]
                     numbers = re.findall(r'\d+', split_after_line)
                     # Convert the found numbers to integers

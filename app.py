@@ -8,7 +8,7 @@ import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
 from chunking import RecursiveTokenChunker, LLMAgenticChunkerv2, ProtonxSemanticChunker
-from utils import process_batch, divide_dataframe
+from utils import process_batch, divide_dataframe, clean_collection_name
 from search import vector_search, keywords_search, hyde_search
 from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS, GGUF_MODEL_OPTIONS
 from llms.onlinellms import OnlineLLMs
@@ -332,6 +332,8 @@ if uploaded_files is not None:
             elif chunkOption == "AgenticChunker" and st.session_state.get("llm_choice") == llm_options["Local (Ollama)"] and st.session_state.get("local_llms"):
                 chunker = LLMAgenticChunkerv2(st.session_state.get("local_llms"))
                 chunks = chunker.split_text(selected_column_value)
+            elif chunkOption == "AgenticChunker" and st.session_state.get("llm_choice") == llm_options["Local (Ollama)"]:
+                pass
             # For each chunk, add a dictionary with the chunk and original_id to the list
             for chunk in chunks:
                 chunk_record = {**row.to_dict(), 'chunk': chunk}
