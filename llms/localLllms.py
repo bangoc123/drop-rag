@@ -7,6 +7,7 @@ import json
 import os
 from dotenv import load_dotenv
 import os
+from .base import LLM
 
 # Load environment variables from .env file
 load_dotenv()
@@ -135,7 +136,7 @@ def run_ollama_container(
         st.code(f"docker run -d -v ollama:/root/.ollama -p 11434:11434 --name {container_name} ollama/ollama")
 
 
-class LocalLlms:
+class LocalLlms(LLM):
     def __init__(self, model_name, position_noti="content"):
         self.model_name = model_name
         self.base_url = ollama_endpoint
@@ -200,6 +201,9 @@ class LocalLlms:
         except Exception as e:
             print(f"Error: {e}")
             return None
+        
+    def create_agentic_chunker_message(self, system_prompt, messages, max_tokens=1000, temperature=1):
+        return super().create_agentic_chunker_message(system_prompt, messages, max_tokens, temperature)
         
     def generate_content(self, prompt):
         data = {

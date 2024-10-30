@@ -7,8 +7,8 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 import google.generativeai as genai
 from IPython.display import Markdown
-from chunking import RecursiveTokenChunker, LLMAgenticChunker, ProtonxSemanticChunker
-from utils import process_batch, divide_dataframe, clean_collection_name
+from chunking import RecursiveTokenChunker, LLMAgenticChunkerv2, ProtonxSemanticChunker
+from utils import process_batch, divide_dataframe
 from search import vector_search, keywords_search, hyde_search
 from llms.localLllms import run_ollama_container, run_ollama_model, OLLAMA_MODEL_OPTIONS, GGUF_MODEL_OPTIONS
 from llms.onlinellms import OnlineLLMs
@@ -36,6 +36,10 @@ def clear_session_state():
 #     clear_session_state()
 #     st.success("Session state has been cleared successfully!")
 
+llm_options = {
+    "Online": "Online",
+    "Local (Ollama)": "Local (Ollama)"
+}
 
 
 # Initialize the page
@@ -254,10 +258,10 @@ if uploaded_files is not None:
         ]
 
         # Step 4: Chunking options
-        if not st.session_state.get("llm_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
+        if st.session_state.get("llm_choice") == llm_options["Online"] and not st.session_state.get("llm_api_key") and st.session_state.get("chunkOption") == "AgenticChunker":
             currentChunkerIdx = 0
             st.session_state.chunkOption = NO_CHUNKING
-            notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section", "error")
+            notify("You have to setup the GEMINI API KEY FIRST in the Setup LLM Section for using Online Agentic Chunker", "error")
         elif not st.session_state.get("chunkOption"):
             currentChunkerIdx = 0
             st.session_state.chunkOption = NO_CHUNKING
@@ -322,13 +326,11 @@ if uploaded_files is not None:
                         model="all-MiniLM-L6-v2",
                     )
                 chunks = chunker.split_text(selected_column_value)
-            elif chunkOption == "AgenticChunker" and  st.session_state.get("llm_api_key"):
-                chunker = LLMAgenticChunker(
-                    organisation="google", 
-                    model_name="gemini-1.5-pro", 
-                    api_key=st.session_state.get('llm_api_key')
-                )
+            elif chunkOption == "AgenticChunker" and st.session_state.get("llm_choice") == llm_options["Online"]  and st.session_state.get("llm_api_key"):
+                chunker = LLMAgenticChunkerv2(st.session_state.get("llm_model"))
                 chunks = chunker.split_text(selected_column_value)
+            elif chunkOption == "AgenticChunker" and st.session_state.get("llm_choice") == llm_options["Local (Ollama)"]:
+                pass
             # For each chunk, add a dictionary with the chunk and original_id to the list
             for chunk in chunks:
                 chunk_record = {**row.to_dict(), 'chunk': chunk}
@@ -461,13 +463,13 @@ header_i += 1
 header_text_llm = "{}. Setup LLMs".format(header_i)
 st.header(header_text_llm)
 # Example user selection
-llm_choice = st.selectbox(
-        "Choose Model Source:", 
-        ["Online", "Local (Ollama)"],
-        index=1,
-    )
-
-if llm_choice == "Online":
+st.selectbox(
+    "Choose Model Source:", 
+    ["Online", "Local (Ollama)"],
+    index=list(llm_options.values()).index(llm_options["Local (Ollama)"]),
+    key="llm_choice"
+)
+if st.session_state.get("llm_choice") == llm_options["Online"]:
     # Initialize a variable for tracking if the API key was entered successfully
     api_key_success = False
     st.session_state.llm_type = ONLINE_LLM
@@ -513,7 +515,7 @@ if llm_choice == "Online":
     # Show blue tick if API key was entered successfully
     if api_key_success:
         st.markdown("✅ **API Key Saved Successfully!**")
-elif llm_choice == "Local (Ollama)":
+elif st.session_state.get("llm_choice") == llm_options["Local (Ollama)"]:
     st.markdown("Please install and run [Docker](https://docs.docker.com/engine/install/) before running Ollama locally.")
     # Install and run Ollama Docker container based on hardware
     if st.button("Initialize Ollama Container"):
