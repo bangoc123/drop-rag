@@ -24,7 +24,10 @@ from langchain.schema import Document as langchainDocument
 from langchain_openai import ChatOpenAI
 from collection_management import list_collection
 from dotenv import load_dotenv
+from reflection import QueryReflection
+
 load_dotenv()
+
 
 def clear_session_state():
     for key in st.session_state.keys():
@@ -524,6 +527,7 @@ if st.session_state.get("llm_choice") == llm_options["Online"]:
     # Show blue tick if API key was entered successfully
     if api_key_success:
         st.markdown("✅ **API Key Saved Successfully!**")
+            
 elif st.session_state.get("llm_choice") == llm_options["Local (Ollama)"]:
     st.markdown("Please install and run [Docker](https://docs.docker.com/engine/install/) before running Ollama locally.")
     # Install and run Ollama Docker container based on hardware
@@ -727,10 +731,21 @@ if prompt := st.chat_input("What is up?"):
             # Combine retrieved data to enhance the prompt based on selected columns
             metadatas, retrieved_data = [], ""
             if st.session_state.columns_to_answer:
+                # Setup reflection
+                if "reflection" not in st.session_state and st.session_state.get("llm_choice") == llm_options["Online"] and st.session_state.get("llm_model", None):
+                    st.session_state.reflection = QueryReflection(st.session_state.llm_model)
+                elif "reflection" not in st.session_state and st.session_state.get("llm_choice") == llm_options["Local (Ollama)"] and st.session_state.get("local_llms", None):
+                    st.session_state.reflection = QueryReflection(st.session_state.local_llms)
+                    
+                if "reflection" in st.session_state:
+                    query_reflection = st.session_state.reflection(st.session_state.chat_history)
+                else:
+                    query_reflection = prompt
+
                 if st.session_state.search_option == "Vector Search":
                     metadatas, retrieved_data = vector_search(
                         st.session_state.embedding_model, 
-                        prompt, 
+                        query_reflection, 
                         st.session_state.collection, 
                         st.session_state.columns_to_answer,
                         st.session_state.number_docs_retrieval
@@ -740,7 +755,7 @@ if prompt := st.chat_input("What is up?"):
 
                 elif st.session_state.search_option == "Keywords Search":
                     metadatas, retrieved_data = keywords_search(
-                        prompt,
+                        query_reflection,
                         st.session_state.collection,
                         st.session_state.columns_to_answer,
                         st.session_state.number_docs_retrieval
@@ -759,7 +774,7 @@ if prompt := st.chat_input("What is up?"):
                     metadatas, retrieved_data = hyde_search(
                         model,
                         st.session_state.embedding_model,
-                        prompt,
+                        query_reflection,
                         st.session_state.collection,
                         st.session_state.columns_to_answer,
                         st.session_state.number_docs_retrieval,
