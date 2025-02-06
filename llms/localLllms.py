@@ -19,7 +19,9 @@ ollama_endpoint = os.getenv('OLLAMA_ENDPOINT') or "http://localhost:11434"
 
 # Available models with command and details
 OLLAMA_MODEL_OPTIONS = {
-
+    "DeepSeek R1 1.5B": "deepseek-r1:5b",
+    "DeepSeek R1 7B": "deepseek-r1:7b",
+    "DeepSeek R1 14B": "deepseek-r1:14b",
     "Llama 3.2 (3B - 2.0GB)": "llama3.2",
     "Llama 3.2 (1B - 1.3GB)": "llama3.2:1b",
     "Llama 3.1 (8B - 4.7GB)": "llama3.1",
